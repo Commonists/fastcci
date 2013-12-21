@@ -16,8 +16,8 @@ int main(int argc, char *argv[]) {
   if (argc!=2) exit(1);
   int rootcat = atoi(argv[1]);
 
-  int *cat  = readFile("fastcci.cat");
-  int *tree = readFile("fastcci.tree");
+  int *cat  = readFile("../fastcci.cat");
+  int *tree = readFile("../fastcci.tree");
 
   int i = cat[rootcat], cstart = i+2, cend = tree[i];
   printf("Found %d subcats tree[%d]=%d %d %d\n", cend-cstart,i, tree[i], tree[i+1], tree[i+2]);

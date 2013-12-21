@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include <malloc.h>
 
+int compare (const void * a, const void * b) {
+  return ( *(int*)a - *(int*)b );
+}
+
 int main(int argc, char *argv[]) {
 	int i;
 	if (argc!=2) exit(1);
@@ -30,10 +34,12 @@ int main(int argc, char *argv[]) {
 					cat[lcl_to] = cstart;
 					tree[cstart]   = csubcat;
 					tree[cstart+1] = cfile;
+                    // pre-sort the file list
+                    qsort(&(tree[csubcat]),cfile-csubcat,sizeof(int),compare);
 				}
 				cstart = csubcat = cfile;
-				csubcat = cstart + 2;
-				cfile   = cstart + 2;
+				csubcat += 2;
+				cfile   += 2;
 			}
 			lcl_to = cl_to;
 
@@ -43,6 +49,7 @@ int main(int argc, char *argv[]) {
 			} else if (type[0]=='f') {
 				tree[cfile++] = cl_from;
 			}
+
 			if (cfile==maxtree) {
 				printf("Tree buffer too small\n");
 				exit(1);
@@ -52,10 +59,12 @@ int main(int argc, char *argv[]) {
 	cat[lcl_to] = cstart;
 	tree[cstart]   = csubcat;
 	tree[cstart+1] = cfile;
+    // pre-sort the file list
+    qsort(&(tree[csubcat]),cfile-csubcat,sizeof(int),compare);
 
 	// write out binary tree files
-	FILE *outtree = fopen("fastcci.tree","wb");
-	FILE *outcat  = fopen("fastcci.cat","wb");
+	FILE *outtree = fopen("../fastcci.tree","wb");
+	FILE *outcat  = fopen("../fastcci.cat","wb");
 
 	fwrite(tree, sizeof(int), cfile,  outtree);
 	fwrite(cat,  sizeof(int), maxcat, outcat);

@@ -53,11 +53,11 @@ void tagCat(int id, int depth) {
 }
 
 int main() {
-  int maxcat = readFile("fastcci.cat", cat);
+  int maxcat = readFile("../fastcci.cat", cat);
   maxcat /= sizeof(int);
   mask = (char*)malloc(maxcat);
 
-  readFile("fastcci.tree", tree);
+  readFile("../fastcci.tree", tree);
 
   int maxsubcatcount = 0;
   memset(mask,0,maxcat);
