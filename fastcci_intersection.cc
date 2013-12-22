@@ -76,18 +76,27 @@ int main(int argc, char *argv[]) {
     // fetch files through deep traversal
     resbuf=i;
     fetchFiles(cid[i],0);
-    printf("fnum %d\n", fnum[i]);
+    fprintf(stderr,"fnum %d\n", fnum[i]);
 
     // sort the result buffer
     qsort(fbuf[i], fnum[i], sizeof(int), compare);
-
-    // testoutput
-    for (int j=0; j<10; ++j) {
-      printf("  %d\n", fbuf[i][j]);
-    }
   }
 
   // perform intersection
+  int i0=0, i1=1, r, lr=-1;
+  do {
+    if (fbuf[0][i0] < fbuf[1][i1]) 
+      i0++;
+    else if (fbuf[0][i0] > fbuf[1][i1]) 
+      i1++;
+    else {
+      r = fbuf[0][i0];
+      if (r!=lr) printf("%d\n",r);
+      lr = r;
+      i0++;
+      i1++;
+    }
+  } while (i0 < fnum[0] && i1<fnum[1]);
 
   free(cat);
   free(tree);
