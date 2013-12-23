@@ -13,7 +13,7 @@ int readFile(const char *fname, int* &buf) {
   return sz;
 }
 
-const int maxdepth=300;
+const int maxdepth=500;
 
 int resbuf;
 int *fbuf[2] = {0}, fmax[2]={100000,100000}, fnum[2];
@@ -79,24 +79,64 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"fnum %d\n", fnum[i]);
 
     // sort the result buffer
-    qsort(fbuf[i], fnum[i], sizeof(int), compare);
   }
 
-  // perform intersection
-  int i0=0, i1=1, r, lr=-1;
-  do {
-    if (fbuf[0][i0] < fbuf[1][i1]) 
-      i0++;
-    else if (fbuf[0][i0] > fbuf[1][i1]) 
-      i1++;
-    else {
-      r = fbuf[0][i0];
-      if (r!=lr) printf("%d\n",r);
-      lr = r;
-      i0++;
-      i1++;
+  // decide on an intersection strategy
+  if (fnum[0]>1000000 || fnum[1]>1000000) {
+    fprintf(stderr,"using bsearch strategy.\n");
+    // sort the smaller and bsearch on it
+    int small, large;
+    if (fnum[0] < fnum[1]) {
+      small=0; large=1; 
+    } else {
+      small=1; large=0; 
     }
-  } while (i0 < fnum[0] && i1<fnum[1]);
+    qsort(fbuf[small], fnum[small], sizeof(int), compare);
+
+    int *j0, *j1, r, *j, *end=&(fbuf[small][fnum[small]+1]);
+    for (int i=0; i<fnum[large]; ++i) {
+      j = (int*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof(int), compare);
+      if (j) {
+        // output the result 
+        printf("%d\n",fbuf[large][i]);
+
+        // remove this match from the small result set
+        j0=j; while(j0>fbuf[small] && *j==*j0) j0--; 
+        j1=j; while(j1<end && *j==*j1) j1++;
+
+        // fill in from the entry before or after (if this was the last entry break out of the loop)
+        if (j1<end) r=*j1;
+        else if (j0>fbuf[small]) r=*j0;
+        else break;
+
+        j1--;
+        do {
+          *(++j0)=r;
+        } while(j0<j1);
+      }
+    }
+  } else {
+    // sort both and intersect then
+    fprintf(stderr,"using sort strategy.\n");
+    qsort(fbuf[0], fnum[0], sizeof(int), compare);
+    qsort(fbuf[1], fnum[1], sizeof(int), compare);
+
+    // perform intersection
+    int i0=0, i1=1, r, lr=-1;
+    do {
+      if (fbuf[0][i0] < fbuf[1][i1]) 
+        i0++;
+      else if (fbuf[0][i0] > fbuf[1][i1]) 
+        i1++;
+      else {
+        r = fbuf[0][i0];
+        if (r!=lr) printf("%d\n",r);
+        lr = r;
+        i0++;
+        i1++;
+      }
+    } while (i0 < fnum[0] && i1<fnum[1]);
+  }
 
   free(cat);
   free(tree);
