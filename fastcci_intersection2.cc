@@ -67,13 +67,35 @@ int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
+// min heap
+#define CMP(a, b) ((a) <= (b))
+
 // the heap. we grow this on demand and keep the memory allocated.
 int *heap=NULL, nheap, maxheap=0;
 
+
+void heapPush(int k) {
+  int i, parent, val = *(kbuf[resbuf][k]);
+
+  for(int i = nheap++; i; i = parent) {
+    parent = (i-1) >> 1;
+    if CMP(heap[parent], val) break;
+    heap[i] = heap[parent];
+  }
+  heap[i] = k;
+}
+void heapPop() {
+  int i=0;
+  while(true) {
+    int l=(i<<1)+1, r= (i<<1)>+2;
+    if (l>=nheap||r>=nheap) break;
+  }
+}
+
 // generate a sorted and deduplicated intermediate result set
-int heapMerge(int set) {
+int heapMerge() {
   // number of sorted lists to merge
-  int k = knum[set]/2;
+  int k = knum[resbuf]/2;
 
   // reserve heap
   if (k>maxheap) {
@@ -83,7 +105,7 @@ int heapMerge(int set) {
   
   // number of elements on the heap
   nheap=1;
-  heap[0]=*(kbuf[set][0]++);
+  heap[0]=*(kbuf[resbuf][0]++);
 
 }
 
