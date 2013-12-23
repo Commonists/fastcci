@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#if !defined(__APPLE__)
 #include <malloc.h>
+#endif
 
 int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
