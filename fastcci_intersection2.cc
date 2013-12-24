@@ -104,8 +104,23 @@ int heapMerge() {
   nheap=0;
   for (int i=0; i<knum[resbuf]; i+=2 ) heapPush(i,heap);
 
+  int r, lr=-1,a, val;
   while (nheap>0) {
     // fetch the next item from the list at the top of the heap
+    r = *(kbuf[resbuf][heap[1]]++);
+
+    // append to output if different from previous value
+    if (r!=lr) {
+    }
+
+    // if the list in the heap root has elements left leave it in the heap otherwise
+    if (kbuf[resbuf][heap[1]]==kbuf[resbuf][heap[1]+1]) {
+      // remove it (put the last item on the heap in its place)
+      heap[1] = heap[nheap--];
+    }
+
+    // percolate the current heap root down
+    val = *(kbuf[resbuf][heap[1]]);
   }
 }
 
