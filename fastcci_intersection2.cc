@@ -71,19 +71,15 @@ int compare (const void * a, const void * b) {
 #define CMP(a, b) ((a) <= (b))
 
 // the heap. we grow this on demand and keep the memory allocated.
-int *heap=NULL, nheap, maxheap=0;
+int *mheap=NULL, *heap, nheap, maxheap=0;
 
 
-void heapPush(int k) {
-  int i, parent, val = *(kbuf[resbuf][k]);
-
-  for(int i = nheap++; i; i = parent) {
-    parent = (i-1) >> 1;
-    if CMP(heap[parent], val) break;
-    heap[i] = heap[parent];
-  }
+inline void heapPush(int k, int *heap) {
+  int i=++nheap, val = *(kbuf[resbuf][k]);
+  for(; i > 1 && CMP(heap[i>>1], val); i = i>>1 ) heap[i] = heap[i>>2];
   heap[i] = k;
 }
+
 void heapPop() {
   int i=0;
   while(true) {
@@ -100,13 +96,17 @@ int heapMerge() {
   // reserve heap
   if (k>maxheap) {
     maxheap=k;
-    heap = (int*)realloc(heap,k*sizeof(int));
+    mheap = (int*)realloc(mheap,k*sizeof(int));
+    heap = mheap-1;
   }
   
-  // number of elements on the heap
-  nheap=1;
-  heap[0]=*(kbuf[resbuf][0]++);
+  // initial heap population (each heap item is the number of a subcategory file list)
+  nheap=0;
+  for (int i=0; i<knum[resbuf]; i+=2 ) heapPush(i,heap);
 
+  while (nheap>0) {
+    // fetch the next item from the list at the top of the heap
+  }
 }
 
 int main(int argc, char *argv[]) {
