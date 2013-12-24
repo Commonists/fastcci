@@ -76,7 +76,7 @@ int *mheap=NULL, *heap, nheap, maxheap=0;
 
 inline void heapPush(int k, int *heap) {
   int i=++nheap, val = *(kbuf[resbuf][k]);
-  for(; i > 1 && CMP(heap[i>>1], val); i = i>>1 ) heap[i] = heap[i>>2];
+  for(; i > 1 && CMP(*(kbuf[resbuf][heap[i>>1]]), val); i = i>>1 ) heap[i] = heap[i>>2];
   heap[i] = k;
 }
 
@@ -102,9 +102,10 @@ int heapMerge() {
   
   // initial heap population (each heap item is the number of a subcategory file list)
   nheap=0;
-  for (int i=0; i<knum[resbuf]; i+=2 ) heapPush(i,heap);
+  int i;
+  for (i=0; i<knum[resbuf]; i+=2 ) heapPush(i,heap);
 
-  int r, lr=-1,a, val;
+  int r, lr=-1, val;
   while (nheap>0) {
     // fetch the next item from the list at the top of the heap
     r = *(kbuf[resbuf][heap[1]]++);
@@ -120,7 +121,20 @@ int heapMerge() {
     }
 
     // percolate the current heap root down
-    val = *(kbuf[resbuf][heap[1]]);
+    k = heap[1];
+    val = *(kbuf[resbuf][k]);
+    i=2;
+    while (i<nheap) {
+      if (i+1<nheap && *(kbuf[resbuf][heap[i+1]])<*(kbuf[resbuf][heap[i]]) && *(kbuf[resbuf][heap[i+1]])<val) {
+        // go right
+        i++;
+        heap[i>>1] = heap[i];
+      } else if (*(kbuf[resbuf][heap[i]])<val) {
+        // go left
+        heap[i>>1] = heap[i];
+      } else break;
+    }
+    if (i<nheap) heap[i]=k;
   }
 }
 
