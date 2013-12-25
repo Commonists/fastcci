@@ -67,16 +67,13 @@ int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
-// min heap
-#define CMP(a, b) ((a) <= (b))
-
 // the heap. we grow this on demand and keep the memory allocated.
 int ***mheap=NULL, ***heap, nheap, maxheap=0;
 
 
 inline void heapPush(int **p, int ***heap) {
   int i=++nheap, val = **p;
-  for(; i > 1 && CMP(**(heap[i>>1]), val); i = i>>1 ) heap[i] = heap[i>>2];
+  for(; i>1 && **(heap[i>>1])>val; i = i>>1 ) heap[i] = heap[i>>1];
   heap[i] = p;
 }
 
@@ -91,7 +88,7 @@ void heapPop() {
 // generate a sorted and deduplicated intermediate result set
 int heapMerge() {
   // number of sorted lists to merge
-  int k = knum[resbuf]/2;
+  int k = knum[resbuf]/2, count=0;
 
   // reserve heap
   if (k>maxheap) {
@@ -112,6 +109,7 @@ int heapMerge() {
 
     // append to output if different from previous value
     if (r!=lr) {
+      count++;
     }
 
     // if the list in the heap root has elements left leave it in the heap otherwise
@@ -136,6 +134,8 @@ int heapMerge() {
     }
     if (i<nheap) heap[i]=p;
   }
+
+  fprintf(stderr,"%d unique files.\n", count);
 }
 
 int main(int argc, char *argv[]) {
@@ -163,6 +163,7 @@ int main(int argc, char *argv[]) {
     resbuf=i;
     fetchFiles(cid[i],0);
     fprintf(stderr,"%d subcategories included.\n", knum[i]/2);
+    heapMerge();
   }
 
   exit(0); // break for now
