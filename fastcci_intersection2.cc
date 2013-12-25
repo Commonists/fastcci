@@ -71,13 +71,13 @@ int compare (const void * a, const void * b) {
 #define CMP(a, b) ((a) <= (b))
 
 // the heap. we grow this on demand and keep the memory allocated.
-int *mheap=NULL, *heap, nheap, maxheap=0;
+int ***mheap=NULL, ***heap, nheap, maxheap=0;
 
 
-inline void heapPush(int k, int *heap) {
-  int i=++nheap, val = *(kbuf[resbuf][k]);
-  for(; i > 1 && CMP(*(kbuf[resbuf][heap[i>>1]]), val); i = i>>1 ) heap[i] = heap[i>>2];
-  heap[i] = k;
+inline void heapPush(int **p, int ***heap) {
+  int i=++nheap, val = **p;
+  for(; i > 1 && CMP(**(heap[i>>1]), val); i = i>>1 ) heap[i] = heap[i>>2];
+  heap[i] = p;
 }
 
 void heapPop() {
@@ -96,45 +96,45 @@ int heapMerge() {
   // reserve heap
   if (k>maxheap) {
     maxheap=k;
-    mheap = (int*)realloc(mheap,k*sizeof(int));
+    mheap = (int***)realloc(mheap,k*sizeof(int));
     heap = mheap-1;
   }
   
-  // initial heap population (each heap item is the number of a subcategory file list)
+  // initial heap population (each heap item is the pointer to a subcategory file list)
   nheap=0;
   int i;
-  for (i=0; i<knum[resbuf]; i+=2 ) heapPush(i,heap);
+  for (i=0; i<knum[resbuf]; i+=2 ) heapPush(&(kbuf[resbuf][i]),heap);
 
-  int r, lr=-1, val;
+  int r, lr=-1, val, **p;
   while (nheap>0) {
     // fetch the next item from the list at the top of the heap
-    r = *(kbuf[resbuf][heap[1]]++);
+    r = *(*heap[1]++);
 
     // append to output if different from previous value
     if (r!=lr) {
     }
 
     // if the list in the heap root has elements left leave it in the heap otherwise
-    if (kbuf[resbuf][heap[1]]==kbuf[resbuf][heap[1]+1]) {
+    if (*(heap[1])==*(heap[1]+1)) {
       // remove it (put the last item on the heap in its place)
       heap[1] = heap[nheap--];
     }
 
     // percolate the current heap root down
-    k = heap[1];
-    val = *(kbuf[resbuf][k]);
+    p = heap[1];
+    val = **p;
     i=2;
     while (i<nheap) {
-      if (i+1<nheap && *(kbuf[resbuf][heap[i+1]])<*(kbuf[resbuf][heap[i]]) && *(kbuf[resbuf][heap[i+1]])<val) {
+      if (i+1<nheap && **(heap[i+1])<**(heap[i]) && **(heap[i+1])<val) {
         // go right
         i++;
         heap[i>>1] = heap[i];
-      } else if (*(kbuf[resbuf][heap[i]])<val) {
+      } else if (**(heap[i])<val) {
         // go left
         heap[i>>1] = heap[i];
       } else break;
     }
-    if (i<nheap) heap[i]=k;
+    if (i<nheap) heap[i]=p;
   }
 }
 
