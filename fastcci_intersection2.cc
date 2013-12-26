@@ -52,7 +52,7 @@ void fetchFiles(int id, int depth) {
     // grow buffer on demand
     if (knum[resbuf]+2 >= kmax[resbuf]) {
       kmax[resbuf] *= 2;
-      kbuf[resbuf] = (int**)realloc(kbuf[resbuf], kmax[resbuf]*sizeof(int*));
+      kbuf[resbuf] = (int**)realloc(kbuf[resbuf], kmax[resbuf] * sizeof *kbuf[resbuf]);
     }
 
     // copy file list pointers
@@ -104,12 +104,18 @@ int heapMerge() {
 
   int r, lr=-1, val, **p, sc;
   while (nheap>0) {
+    /*for (int j=1; j<=nheap; ++j) {
+      printf("%d (%lx,%lx)  ", **heap[j], long(*heap[j])-long(tree), long(*(heap[j]+1))-long(tree) );
+    }
+    printf("\n");*/
+
     // fetch the next item from the list at the top of the heap
-    r = *(*heap[1]++);
+    r = *((*heap[1])++);
 
     // append to output if different from previous value
     if (r!=lr) {
       count++;
+      //printf("%d\n",r);
       lr = r;
     }
 
@@ -117,6 +123,7 @@ int heapMerge() {
     if (*heap[1]==*(heap[1]+1)) {
       // remove it (put the last item on the heap in its place)
       heap[1] = heap[nheap--];
+      //printf("removed cat nheap=%d\n",nheap);
     }
 
     // percolate the current heap root down
@@ -135,6 +142,7 @@ int heapMerge() {
       }
       i = sc;
     }
+
   }
 
   fprintf(stderr,"%d unique files.\n", count);
@@ -153,8 +161,8 @@ int main(int argc, char *argv[]) {
   readFile("../fastcci.tree", tree);
 
   // intermediate return buffers
-  kbuf[0]=(int**)malloc(kmax[0]*sizeof(int*));
-  kbuf[1]=(int**)malloc(kmax[1]*sizeof(int*));
+  kbuf[0]=(int**)malloc(kmax[0] * sizeof *kbuf[0] );
+  kbuf[1]=(int**)malloc(kmax[1] * sizeof *kbuf[1] );
 
   // generate intermediate results
   for (int i=0; i<2; ++i) {
