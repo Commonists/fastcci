@@ -93,7 +93,7 @@ int heapMerge() {
   // reserve heap
   if (k>maxheap) {
     maxheap=k;
-    mheap = (int***)realloc(mheap,k*sizeof(int));
+    mheap = (int***)realloc(mheap,k * sizeof *mheap);
     heap = mheap-1;
   }
   
@@ -102,7 +102,7 @@ int heapMerge() {
   int i;
   for (i=0; i<knum[resbuf]; i+=2 ) heapPush(&(kbuf[resbuf][i]),heap);
 
-  int r, lr=-1, val, **p;
+  int r, lr=-1, val, **p, sc;
   while (nheap>0) {
     // fetch the next item from the list at the top of the heap
     r = *(*heap[1]++);
@@ -110,10 +110,11 @@ int heapMerge() {
     // append to output if different from previous value
     if (r!=lr) {
       count++;
+      lr = r;
     }
 
     // if the list in the heap root has elements left leave it in the heap otherwise
-    if (*(heap[1])==*(heap[1]+1)) {
+    if (*heap[1]==*(heap[1]+1)) {
       // remove it (put the last item on the heap in its place)
       heap[1] = heap[nheap--];
     }
@@ -121,18 +122,19 @@ int heapMerge() {
     // percolate the current heap root down
     p = heap[1];
     val = **p;
-    i=2;
-    while (i<nheap) {
-      if (i+1<nheap && **(heap[i+1])<**(heap[i]) && **(heap[i+1])<val) {
-        // go right
-        i++;
-        heap[i>>1] = heap[i];
-      } else if (**(heap[i])<val) {
-        // go left
-        heap[i>>1] = heap[i];
-      } else break;
+    i=1;
+    while ((i<<1) <= nheap) {
+      sc = i<<1; // smaller child
+      if (sc+1 <= nheap && **(heap[sc+1]) < **(heap[sc]) ) sc++;
+
+      if (**(heap[sc])<val) {
+        heap[i] = heap[sc];
+        heap[sc] = p;
+      } else {
+        break;
+      }
+      i = sc;
     }
-    if (i<nheap) heap[i]=p;
   }
 
   fprintf(stderr,"%d unique files.\n", count);
