@@ -158,19 +158,39 @@ int handleRequest(void *cls, struct MHD_Connection *connection,
                   const char *upload_data, 
                   size_t *upload_data_size, void **con_cls)
 {
-  // this must be made threadsafe
-  int i = bItem++;
-  if( i-aItem >= maxItem ) {
-    // too many requests
-    bItem--;
+  // this routine is called by a single thread only (MHD_USE_SELECT_INTERNALLY)
+
+  // still room on the queue?
+  if( bItem-aItem+1 >= maxItem ) {
+    // too many requests. reject
     return MHD_NO;
   }
+
+  int i = (bItem++) % maxItem;
 
   // save connection
   queue[i].connection = connection;
 
-}
+  // parse parameters
+  const char* c1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c1");
+  const char* c2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c2");
 
+  if (c1==NULL) {
+    // must supply c1 parameter!
+    return MHD_NO;
+  }
+
+  queue[i].c1 = atoi(c1);
+  queue[i].c2 = c2 ? atoi(c2) : -1;
+
+  const char* d1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d1");
+  const char* d2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d2");
+
+  queue[i].d1 = d1 ? atoi(d1) : -1;
+  queue[i].d2 = d2 ? atoi(d2) : -1;
+
+  // nudge the compute thread to start processing the queue (if it is not already busy)
+}
 
 int main(int argc, char *argv[]) {
 
@@ -196,11 +216,13 @@ int main(int argc, char *argv[]) {
       return 1;
     }
         
-    d = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, MHD_OPTION_END);
+    d = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, MHD_OPTION_END);
     
     if (d == NULL) return 1;
     
+    // TODO: enter compute loop here
     getc(stdin);
+
     MHD_stop_daemon(d);
     return 0;
   }
