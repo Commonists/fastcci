@@ -1,3 +1,4 @@
+#include <microhttpd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #if !defined(__APPLE__)
@@ -20,7 +21,7 @@ const int maxdepth=500;
 int resbuf;
 int *fbuf[2] = {0}, fmax[2]={100000,100000}, fnum[2];
 
-int *cat; 
+int *cat, maxcat; 
 int *tree; 
 char *mask;
 
@@ -56,22 +57,11 @@ int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
-int main(int argc, char *argv[]) {
-  if (argc!=3) exit(1);
-  int cid[2] = {atoi(argv[1]), atoi(argv[2])};
-
-  int maxcat = readFile("../fastcci.cat", cat);
-  maxcat /= sizeof(int);
-  mask = (char*)malloc(maxcat);
-
-  readFile("../fastcci.tree", tree);
-
-  // intermediate return buffers
-  fbuf[0]=(int*)malloc(fmax[0]*sizeof(int));
-  fbuf[1]=(int*)malloc(fmax[1]*sizeof(int));
+void intersect(int c1, int c2) {
+  int cid[2] = {c1,c2};
 
   // generate intermediate results
-  for (int i=0; i<2; ++i) {
+  for (int i=0; i<(c1!=c2)?2:1; ++i) {
     // clear visitation mask
     memset(mask,0,maxcat);
     
@@ -79,8 +69,18 @@ int main(int argc, char *argv[]) {
     resbuf=i;
     fetchFiles(cid[i],0);
     fprintf(stderr,"fnum %d\n", fnum[i]);
+  }
 
-    // sort the result buffer
+  // if the same cat was specified twice, just list all the files
+  if (c1==c2) {
+    qsort(fbuf[0], fnum[0], sizeof(int), compare);
+    int lr=-1;
+    for (int i=0; i<fnum[0]; ++i) 
+      if (fbuf[0][i]!=lr) {
+        // output file
+        lr=fbuf[0][i];
+      }
+    return;
   }
 
   // decide on an intersection strategy
@@ -139,9 +139,75 @@ int main(int argc, char *argv[]) {
       }
     } while (i0 < fnum[0] && i1<fnum[1]);
   }
+}
+
+// work item queue
+int aItem = 0, bItem = 0;
+const int maxItem = 1000;
+struct workItem {
+  // connection for this work item
+  struct MHD_Connection *connection;
+  // query parameters
+  int c1, c2; // categories
+  int d1, d2; // depths
+} queue[maxItem];
+
+int handleRequest(void *cls, struct MHD_Connection *connection, 
+                  const char *url, 
+                  const char *method, const char *version, 
+                  const char *upload_data, 
+                  size_t *upload_data_size, void **con_cls)
+{
+  // this must be made threadsafe
+  int i = bItem++;
+  if( i-aItem >= maxItem ) {
+    // too many requests
+    bItem--;
+    return MHD_NO;
+  }
+
+  // save connection
+  queue[i].connection = connection;
+
+}
+
+
+int main(int argc, char *argv[]) {
+
+  maxcat = readFile("../fastcci.cat", cat);
+  maxcat /= sizeof(int);
+  mask = (char*)malloc(maxcat);
+
+  readFile("../fastcci.tree", tree);
+
+  // intermediate return buffers
+  fbuf[0]=(int*)malloc(fmax[0]*sizeof(int));
+  fbuf[1]=(int*)malloc(fmax[1]*sizeof(int));
+
+  if (argc==3) {
+    // commandline test
+    intersect(atoi(argv[1]), atoi(argv[2]));
+  } else {
+    // start webserver
+    struct MHD_Daemon * d;
+    
+    if (argc != 2) {
+      printf("%s PORT\n", argv[0]);
+      return 1;
+    }
+        
+    d = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, MHD_OPTION_END);
+    
+    if (d == NULL) return 1;
+    
+    getc(stdin);
+    MHD_stop_daemon(d);
+    return 0;
+  }
 
   free(cat);
   free(tree);
+  free(mask);
   free(fbuf[0]);
   free(fbuf[1]);
   return 0;
