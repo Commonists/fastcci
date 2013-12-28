@@ -159,6 +159,7 @@ int handleRequest(void *cls, struct MHD_Connection *connection,
                   size_t *upload_data_size, void **con_cls)
 {
   // this routine is called by a single thread only (MHD_USE_SELECT_INTERNALLY)
+  fprintf(stderr,"Handle Request.\n");
 
   // still room on the queue?
   if( bItem-aItem+1 >= maxItem ) {
@@ -216,12 +217,29 @@ int main(int argc, char *argv[]) {
       return 1;
     }
         
-    d = MHD_start_daemon(MHD_USE_SELECT_INTERNALLY, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, MHD_OPTION_END);
+    d = MHD_start_daemon(MHD_USE_DEBUG, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, MHD_OPTION_END);
     
     if (d == NULL) return 1;
+    fprintf(stderr,"Server ready.\n");
     
     // TODO: enter compute loop here
-    getc(stdin);
+    fd_set rs;
+    fd_set ws;
+    fd_set es;
+    int max;
+    while (1) {
+      FD_ZERO (&rs);
+      FD_ZERO (&ws);
+      FD_ZERO (&es);
+                              
+      // try to get file descriptors
+      if (MHD_get_fdset(d, &rs, &ws, &es, &max) != MHD_YES) break;
+      
+      // wait for FDs to get ready
+      fprintf(stderr,"In server loop.\n");
+      select(max + 1, &rs, &ws, &es, NULL);
+      MHD_run(d);
+    }
 
     MHD_stop_daemon(d);
     return 0;
