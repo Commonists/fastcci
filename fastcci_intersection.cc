@@ -5,6 +5,30 @@
 #include <malloc.h>
 #endif
 #include <string.h>
+#include <pthread.h>
+
+// thread management objects
+pthread_mutex_t mutex;
+pthread_cond_t condition;
+
+// category data and traversal information
+const int maxdepth=500;
+int resbuf;
+int *fbuf[2] = {0}, fmax[2]={100000,100000}, fnum[2];
+int *cat, maxcat; 
+int *tree; 
+char *mask;
+
+// work item queue
+int aItem = 0, bItem = 0;
+const int maxItem = 1000;
+struct workItem {
+  // connection for this work item
+  struct MHD_Connection *connection;
+  // query parameters
+  int c1, c2; // categories
+  int d1, d2; // depths
+} queue[maxItem];
 
 int readFile(const char *fname, int* &buf) {
   FILE *in = fopen(fname,"rb");
@@ -15,15 +39,6 @@ int readFile(const char *fname, int* &buf) {
   fread(buf, 1, sz, in);
   return sz;
 }
-
-const int maxdepth=500;
-
-int resbuf;
-int *fbuf[2] = {0}, fmax[2]={100000,100000}, fnum[2];
-
-int *cat, maxcat; 
-int *tree; 
-char *mask;
 
 void fetchFiles(int id, int depth) {
   // record path
@@ -141,17 +156,6 @@ void intersect(int c1, int c2) {
   }
 }
 
-// work item queue
-int aItem = 0, bItem = 0;
-const int maxItem = 1000;
-struct workItem {
-  // connection for this work item
-  struct MHD_Connection *connection;
-  // query parameters
-  int c1, c2; // categories
-  int d1, d2; // depths
-} queue[maxItem];
-
 int handleRequest(void *cls, struct MHD_Connection *connection, 
                   const char *url, 
                   const char *method, const char *version, 
@@ -159,38 +163,112 @@ int handleRequest(void *cls, struct MHD_Connection *connection,
                   size_t *upload_data_size, void **con_cls)
 {
   // this routine is called by a single thread only (MHD_USE_SELECT_INTERNALLY)
-  fprintf(stderr,"Handle Request.\n");
 
-  // still room on the queue?
-  if( bItem-aItem+1 >= maxItem ) {
-    // too many requests. reject
-    return MHD_NO;
+  // only accept GET requests
+  if (0 != strcmp(method, "GET")) return MHD_NO;
+  
+  // only accept url '/' requests
+  if (0 != strcmp(url, "/")) return MHD_NO;
+
+  fprintf(stderr,"Handle Request '%s' (%x,%x).\n",url, long(connection),long(*con_cls));
+
+  // first request of the connection
+  if (*con_cls == NULL) { 
+    *con_cls = connection; 
+
+    // parse parameters
+    const char* c1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c1");
+    const char* c2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c2");
+
+    if (c1==NULL) {
+      // must supply c1 parameter!
+      fprintf(stderr,"No c1 parameter.\n");
+      return MHD_NO;
+    }
+
+    // still room on the queue?
+    pthread_mutex_lock(&mutex);
+    if( bItem-aItem+1 >= maxItem ) {
+      // too many requests. reject
+      fprintf(stderr,"Queue full.\n");
+      pthread_mutex_unlock(&mutex);
+      return MHD_NO;
+    }
+    pthread_mutex_unlock(&mutex);
+
+    // new queue item
+    int i = bItem % maxItem;
+
+    // save connection
+    *con_cls = &queue[i]; 
+    queue[i].connection = connection;
+
+    queue[i].c1 = atoi(c1);
+    queue[i].c2 = c2 ? atoi(c2) : -1;
+
+    const char* d1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d1");
+    const char* d2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d2");
+
+    queue[i].d1 = d1 ? atoi(d1) : -1;
+    queue[i].d2 = d2 ? atoi(d2) : -1;
+
+    fprintf(stderr,"End of handle connection (1st call). %x (%d,%d)\n", long(connection), aItem, bItem);
+
+    // append to the queue and signal worker thread
+    pthread_mutex_lock(&mutex);
+    bItem++;
+    pthread_cond_signal(&condition);
+    pthread_mutex_unlock(&mutex);
+
+    return MHD_YES; 
   }
+    
+  *con_cls = connection; 
 
-  int i = (bItem++) % maxItem;
+  // send keep-alive response
+  int ret;
+  struct MHD_Response *response;
+  const char *page = "Waiting...";
+  response = MHD_create_response_from_buffer(strlen (page), (void*)page, MHD_RESPMEM_PERSISTENT);
+  ret = MHD_add_response_header(response,"Connection","keep-alive");
+  
+  fprintf(stderr,"Queuing response.\n");
+  ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
 
-  // save connection
-  queue[i].connection = connection;
+  fprintf(stderr,"End of handle connection. %x (%d,%d) %d\n", long(connection), aItem, bItem, ret);
+  return ret;
+}
 
-  // parse parameters
-  const char* c1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c1");
-  const char* c2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c2");
+void *computeThread( void *d ) {
+  while(1) {
+    // wait for pthread condition
+    pthread_mutex_lock(&mutex);
+    while (aItem == bItem) pthread_cond_wait(&condition, &mutex);
+    pthread_mutex_unlock(&mutex);
 
-  if (c1==NULL) {
-    // must supply c1 parameter!
-    return MHD_NO;
+    // process queue
+    while (bItem>aItem) {
+      // fetch next item
+      pthread_mutex_lock(&mutex);
+      int i = aItem++ % maxItem;
+      pthread_mutex_unlock(&mutex);
+
+      // compute result
+      fprintf(stderr, "Starting compute\n");
+      sleep(10);
+      fprintf(stderr, "Completed compute\n");
+
+      // post result
+      int ret;
+      struct MHD_Response *response;
+      const char *page = "Done...";
+      response = MHD_create_response_from_buffer(strlen (page), (void*)page, MHD_RESPMEM_PERSISTENT);
+      ret = MHD_add_response_header(response,"Connection","close");
+      ret = MHD_queue_response(queue[i].connection, MHD_HTTP_OK, response);
+      MHD_destroy_response(response);
+    }
   }
-
-  queue[i].c1 = atoi(c1);
-  queue[i].c2 = c2 ? atoi(c2) : -1;
-
-  const char* d1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d1");
-  const char* d2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d2");
-
-  queue[i].d1 = d1 ? atoi(d1) : -1;
-  queue[i].d2 = d2 ? atoi(d2) : -1;
-
-  // nudge the compute thread to start processing the queue (if it is not already busy)
 }
 
 int main(int argc, char *argv[]) {
@@ -223,6 +301,13 @@ int main(int argc, char *argv[]) {
     fprintf(stderr,"Server ready.\n");
     
     // TODO: enter compute loop here
+    pthread_t compute_thread;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
+    if (pthread_create(&compute_thread, &attr, computeThread, NULL)) return 1;
+
+    // server loop
     fd_set rs;
     fd_set ws;
     fd_set es;
