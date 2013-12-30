@@ -170,7 +170,7 @@ int handleRequest(void *cls, struct MHD_Connection *connection,
   // only accept url '/' requests
   if (0 != strcmp(url, "/")) return MHD_NO;
 
-  fprintf(stderr,"Handle Request '%s' (%x,%x).\n",url, long(connection),long(*con_cls));
+  fprintf(stderr,"Handle Request '%s' (%x,%x) size=%d.\n",url, long(connection),long(*con_cls), *upload_data_size);
 
   // first request of the connection
   if (*con_cls == NULL) { 
@@ -228,9 +228,9 @@ int handleRequest(void *cls, struct MHD_Connection *connection,
   // send keep-alive response
   int ret;
   struct MHD_Response *response;
-  const char *page = "Waiting...";
+  const char *page = "Waiting...\n";
   response = MHD_create_response_from_buffer(strlen (page), (void*)page, MHD_RESPMEM_PERSISTENT);
-  ret = MHD_add_response_header(response,"Connection","keep-alive");
+  ret = MHD_add_response_header(response,"Connection","Keep-Alive");
   
   fprintf(stderr,"Queuing response.\n");
   ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
@@ -262,7 +262,7 @@ void *computeThread( void *d ) {
       // post result
       int ret;
       struct MHD_Response *response;
-      const char *page = "Done...";
+      const char *page = "Done...\n";
       response = MHD_create_response_from_buffer(strlen (page), (void*)page, MHD_RESPMEM_PERSISTENT);
       ret = MHD_add_response_header(response,"Connection","close");
       ret = MHD_queue_response(queue[i].connection, MHD_HTTP_OK, response);
@@ -295,7 +295,9 @@ int main(int argc, char *argv[]) {
       return 1;
     }
         
-    d = MHD_start_daemon(MHD_USE_DEBUG, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, MHD_OPTION_END);
+    d = MHD_start_daemon(MHD_USE_DEBUG, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, 
+        MHD_OPTION_CONNECTION_TIMEOUT, 0, 
+        MHD_OPTION_END);
     
     if (d == NULL) return 1;
     fprintf(stderr,"Server ready.\n");
