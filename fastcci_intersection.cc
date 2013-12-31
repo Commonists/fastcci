@@ -42,11 +42,12 @@ struct workItem {
   // query parameters
   int c1, c2; // categories
   int d1, d2; // depths
+  // offset and size
+  int o,s;
   // job type
   wiType type;
   // status
   wiStatus status;
-  int r1, r2; // intemediate result size
   int t0; // queuing timestamp
 } queue[maxItem];
 
@@ -92,11 +93,16 @@ int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
-void intersect(int c1, int c2) {
-  int cid[2] = {c1,c2};
+void intersect(int qi) {
+  int cid[2] = {queue[qi].c1, queue[qi].c2};
+  int n = 0; // number of current output item
+
+  int start = queue[qi].o;
+  int end   = start + queue[qi].s;
+  onion_response *res = queue[qi].res;
 
   // generate intermediate results
-  for (int i=0; i<(c1!=c2)?2:1; ++i) {
+  for (int i=0; i<(cid[0]!=cid[1])?2:1; ++i) {
     // clear visitation mask
     memset(mask,0,maxcat);
     
@@ -107,13 +113,19 @@ void intersect(int c1, int c2) {
   }
 
   // if the same cat was specified twice, just list all the files
-  if (c1==c2) {
+  if (cid[0]==cid[1]) {
     qsort(fbuf[0], fnum[0], sizeof(int), compare);
     int lr=-1;
     for (int i=0; i<fnum[0]; ++i) 
       if (fbuf[0][i]!=lr) {
-        // output file
+        n++;
+        // are we still below the offset?
+        if (n<=start) continue;
+        // output file      
         lr=fbuf[0][i];
+        onion_response_printf(res, "%d\n", lr);
+        // are we at the end of the output window?
+        if (n>=end) break;
       }
     return;
   }
@@ -227,12 +239,16 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   const char* d1 = onion_request_get_query(req, "d1");
   const char* d2 = onion_request_get_query(req, "d2");
 
+  const char* oparam = onion_request_get_query(req, "o");
+  const char* sparam = onion_request_get_query(req, "s");
+
   queue[i].d1 = d1 ? atoi(d1) : -1;
   queue[i].d2 = d2 ? atoi(d2) : -1;
 
+  queue[i].o = oparam ? atoi(oparam) : 0;
+  queue[i].s = sparam ? atoi(sparam) : 100;
+
   queue[i].status = WS_WAITING;
-  queue[i].r1 = 0;
-  queue[i].r2 = 0;
 
   fprintf(stderr,"End of handle connection (1st call). %x (%d,%d)\n", long(req), aItem, bItem);
 
@@ -266,7 +282,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
         break;
       case WS_COMPUTING :
         // send intermediate result sizes
-        onion_response_printf(res, "WORKING %d %d\n", queue[i].r1, queue[i].r2);  
+        onion_response_printf(res, "WORKING %d %d\n", fnum[0], fnum[1]);  
         onion_response_flush(res);
         onion_response_flush(res);
         break;
@@ -313,10 +329,13 @@ void *computeThread( void *d ) {
       // signal start of compute
       onion_response_write0(queue[i].res, "COMPUTE_START\n");  
       onion_response_flush(queue[i].res);
+
+      fnum[0] = 0;
+      fnum[1] = 0;
       queue[i].status = WS_COMPUTING;
 
       // compute result
-      sleep(10);
+      intersect(i);
 
       queue[i].status = WS_STREAMING;
 
@@ -351,49 +370,43 @@ int main(int argc, char *argv[]) {
   fbuf[0]=(int*)malloc(fmax[0]*sizeof(int));
   fbuf[1]=(int*)malloc(fmax[1]*sizeof(int));
 
-  if (argc==3) {
-    // commandline test
-    intersect(atoi(argv[1]), atoi(argv[2]));
-  } else {
-    if (argc != 2) {
-      printf("%s PORT\n", argv[0]);
-      return 1;
-    }
-    
-    // thread properties
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
-
-    // setup compute thread
-    pthread_t compute_thread;
-    if (pthread_create(&compute_thread, &attr, computeThread, NULL)) return 1;
-
-    // setup compute thread
-    pthread_t notify_thread;
-    if (pthread_create(&notify_thread, &attr, notifyThread, NULL)) return 1;
-
-    // start webserver
-    onion *o=onion_new(O_THREADED);
-
-    onion_set_port(o, argv[1]);
-    onion_set_hostname(o,"::");
-    onion_set_timeout(o, 1000000000);
-    //onion_set_root_handler(o, onion_handler_new(handleRequest, NULL, NULL) );
-
-    // add handlers
-    onion_url *url=onion_root_url(o);
-    onion_url_add(url, "status", (void*)handleStatus);
-    onion_url_add(url, "", (void*)handleRequest);
-
-
-    fprintf(stderr,"Server ready.\n");
-    int error = onion_listen(o);
-    if (error) perror("Cant create the server");
-    
-    onion_free(o);
-    return 0;
+  if (argc != 2) {
+    printf("%s PORT\n", argv[0]);
+    return 1;
   }
+  
+  // thread properties
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
+
+  // setup compute thread
+  pthread_t compute_thread;
+  if (pthread_create(&compute_thread, &attr, computeThread, NULL)) return 1;
+
+  // setup compute thread
+  pthread_t notify_thread;
+  if (pthread_create(&notify_thread, &attr, notifyThread, NULL)) return 1;
+
+  // start webserver
+  onion *o=onion_new(O_THREADED);
+
+  onion_set_port(o, argv[1]);
+  onion_set_hostname(o,"::");
+  onion_set_timeout(o, 1000000000);
+  //onion_set_root_handler(o, onion_handler_new(handleRequest, NULL, NULL) );
+
+  // add handlers
+  onion_url *url=onion_root_url(o);
+  onion_url_add(url, "status", (void*)handleStatus);
+  onion_url_add(url, "", (void*)handleRequest);
+
+
+  fprintf(stderr,"Server ready.\n");
+  int error = onion_listen(o);
+  if (error) perror("Cant create the server");
+  
+  onion_free(o);
 
   free(cat);
   free(tree);
