@@ -24,8 +24,11 @@ int *cat, maxcat;
 int *tree; 
 char *mask;
 
+// work item type
+enum wiType { WT_INTERSECT };
+
 // work item status type
-enum wiStatus { WI_WAITING, WI_COMPUTING, WI_STREAMING, WI_DONE };
+enum wiStatus { WS_WAITING, WS_COMPUTING, WS_STREAMING, WS_DONE };
 
 // work item queue
 int aItem = 0, bItem = 0;
@@ -39,8 +42,12 @@ struct workItem {
   // query parameters
   int c1, c2; // categories
   int d1, d2; // depths
+  // job type
+  wiType type;
   // status
   wiStatus status;
+  int r1, r2; // intemediate result size
+  int t0; // queuing timestamp
 } queue[maxItem];
 
 int readFile(const char *fname, int* &buf) {
@@ -223,7 +230,9 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   queue[i].d1 = d1 ? atoi(d1) : -1;
   queue[i].d2 = d2 ? atoi(d2) : -1;
 
-  queue[i].status = WI_WAITING;
+  queue[i].status = WS_WAITING;
+  queue[i].r1 = 0;
+  queue[i].r2 = 0;
 
   fprintf(stderr,"End of handle connection (1st call). %x (%d,%d)\n", long(req), aItem, bItem);
 
@@ -236,26 +245,38 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   // send keep-alive response
   onion_response_set_header(res, "Transfer-Encoding","Chunked");
   onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
-  onion_response_write0(res, "Computing..\n");  
+  onion_response_write0(res, "QUEUED\n");  
   onion_response_flush(res);
   onion_response_flush(res);
 
   // wait for signal from worker thread (TODO: have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
-  bool done;
+  wiStatus status;
   do {
     pthread_mutex_lock(&(queue[i].mutex));
     pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
-    done = (queue[i].status == WI_DONE);
+    status = queue[i].status;
     pthread_mutex_unlock(&(queue[i].mutex));
 
-    if (!done) {
-      onion_response_write0(res, "..\n");  
-      onion_response_flush(res);
-      onion_response_flush(res);
+    switch (status) {
+      case WS_WAITING :
+        // send number of jobs ahead of this one in queue
+        onion_response_printf(res, "WAITING %d\n", i-aItem);  
+        onion_response_flush(res);
+        onion_response_flush(res);
+        break;
+      case WS_COMPUTING :
+        // send intermediate result sizes
+        onion_response_printf(res, "WORKING %d %d\n", queue[i].r1, queue[i].r2);  
+        onion_response_flush(res);
+        onion_response_flush(res);
+        break;
     }
-  } while (!done);
+    
+    // don't do anything if status is WS_STREAMING, the compute task is sending data
 
-  onion_response_write0(res, "Done..\n");  
+  } while (status != WS_DONE);
+
+  onion_response_write0(res, "DONE\n");  
   onion_response_flush(res);
 
   fprintf(stderr,"End of handle connection.\n");
@@ -289,18 +310,21 @@ void *computeThread( void *d ) {
       // fetch next item
       int i = aItem % maxItem;
 
-      // compute result
-      fprintf(stderr, "Starting compute\n");
-      sleep(10);
-      fprintf(stderr, "Completed compute\n");
+      // signal start of compute
+      onion_response_write0(queue[i].res, "COMPUTE_START\n");  
+      onion_response_flush(queue[i].res);
+      queue[i].status = WS_COMPUTING;
 
-      queue[i].status = WI_STREAMING;
+      // compute result
+      sleep(10);
+
+      queue[i].status = WS_STREAMING;
 
       // stream response
       onion_response_write0(queue[i].res, "result\n");  
       onion_response_flush(queue[i].res);
 
-      queue[i].status = WI_DONE;
+      queue[i].status = WS_DONE;
 
       // pop item off queue
       pthread_mutex_lock(&mutex);
