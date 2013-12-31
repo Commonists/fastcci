@@ -97,35 +97,37 @@ void intersect(int qi) {
   int cid[2] = {queue[qi].c1, queue[qi].c2};
   int n = 0; // number of current output item
 
-  int start = queue[qi].o;
-  int end   = start + queue[qi].s;
+  int outstart = queue[qi].o;
+  int outend   = outstart + queue[qi].s;
   onion_response *res = queue[qi].res;
 
   // generate intermediate results
-  for (int i=0; i<(cid[0]!=cid[1])?2:1; ++i) {
+  for (int i=0; i<((cid[0]!=cid[1])?2:1); ++i) {
     // clear visitation mask
     memset(mask,0,maxcat);
     
     // fetch files through deep traversal
     resbuf=i;
     fetchFiles(cid[i],0);
-    fprintf(stderr,"fnum %d\n", fnum[i]);
+    fprintf(stderr,"fnum(%d) %d\n", cid[i], fnum[i]);
   }
 
   // if the same cat was specified twice, just list all the files
   if (cid[0]==cid[1]) {
+    fprintf(stderr,"pre sort\n");
     qsort(fbuf[0], fnum[0], sizeof(int), compare);
+    fprintf(stderr,"post sort\n");
     int lr=-1;
     for (int i=0; i<fnum[0]; ++i) 
       if (fbuf[0][i]!=lr) {
         n++;
         // are we still below the offset?
-        if (n<=start) continue;
+        if (n<=outstart) continue;
         // output file      
         lr=fbuf[0][i];
         onion_response_printf(res, "%d\n", lr);
         // are we at the end of the output window?
-        if (n>=end) break;
+        if (n>=outend) break;
       }
     return;
   }
@@ -146,8 +148,10 @@ void intersect(int qi) {
     for (int i=0; i<fnum[large]; ++i) {
       j = (int*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof(int), compare);
       if (j) {
-        // output the result 
-        printf("%d\n",fbuf[large][i]);
+        // are we at the output offset?
+        if (n>=outstart) onion_response_printf(res, "%d\n", fbuf[large][i]);
+        n++;
+        if (n>=outend) break;
 
         // remove this match from the small result set
         j0=j; while(j0>fbuf[small] && *j==*j0) j0--; 
@@ -179,7 +183,14 @@ void intersect(int qi) {
         i1++;
       else {
         r = fbuf[0][i0];
-        if (r!=lr) printf("%d\n",r);
+        
+        if (r!=lr) {
+          // are we at the output offset?
+          if (n>=outstart) onion_response_printf(res, "%d\n", r);
+          n++;
+          if (n>=outend) break;
+        }
+
         lr = r;
         i0++;
         i1++;
@@ -234,7 +245,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   queue[i].res = res;
 
   queue[i].c1 = atoi(c1);
-  queue[i].c2 = c2 ? atoi(c2) : -1;
+  queue[i].c2 = c2 ? atoi(c2) : queue[i].c1;
 
   const char* d1 = onion_request_get_query(req, "d1");
   const char* d2 = onion_request_get_query(req, "d2");
@@ -250,20 +261,18 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
   queue[i].status = WS_WAITING;
 
-  fprintf(stderr,"End of handle connection (1st call). %x (%d,%d)\n", long(req), aItem, bItem);
+  // send keep-alive response
+  onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
+  onion_response_set_header(res, "Transfer-Encoding","Chunked");
+  onion_response_write0(res, "QUEUED\n");  
+  onion_response_flush(res);
+  onion_response_flush(res);
 
   // append to the queue and signal worker thread
   pthread_mutex_lock(&mutex);
   bItem++;
   pthread_cond_signal(&condition);
   pthread_mutex_unlock(&mutex);
-
-  // send keep-alive response
-  onion_response_set_header(res, "Transfer-Encoding","Chunked");
-  onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
-  onion_response_write0(res, "QUEUED\n");  
-  onion_response_flush(res);
-  onion_response_flush(res);
 
   // wait for signal from worker thread (TODO: have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
   wiStatus status;
@@ -273,6 +282,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
     status = queue[i].status;
     pthread_mutex_unlock(&(queue[i].mutex));
 
+    fprintf(stderr,"notify status %d\n", status);
     switch (status) {
       case WS_WAITING :
         // send number of jobs ahead of this one in queue
