@@ -1,11 +1,15 @@
-#include <microhttpd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #if !defined(__APPLE__)
 #include <malloc.h>
 #endif
 #include <string.h>
 #include <pthread.h>
+
+#include <onion/onion.h>
+#include <onion/handler.h>
+#include <onion/response.h>
 
 // thread management objects
 pthread_mutex_t mutex;
@@ -23,8 +27,9 @@ char *mask;
 int aItem = 0, bItem = 0;
 const int maxItem = 1000;
 struct workItem {
-  // connection for this work item
-  struct MHD_Connection *connection;
+  // thread data
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
   // query parameters
   int c1, c2; // categories
   int d1, d2; // depths
@@ -156,88 +161,69 @@ void intersect(int c1, int c2) {
   }
 }
 
-int handleRequest(void *cls, struct MHD_Connection *connection, 
-                  const char *url, 
-                  const char *method, const char *version, 
-                  const char *upload_data, 
-                  size_t *upload_data_size, void **con_cls)
+onion_connection_status handleRequest(void *d, onion_request *req, onion_response *res)
 {
   // this routine is called by a single thread only (MHD_USE_SELECT_INTERNALLY)
 
-  // only accept GET requests
-  if (0 != strcmp(method, "GET")) return MHD_NO;
-  
-  // only accept url '/' requests
-  if (0 != strcmp(url, "/")) return MHD_NO;
+  fprintf(stderr,"Handle Request '%s'\n", onion_request_get_path(req) );
 
-  fprintf(stderr,"Handle Request '%s' (%x,%x) size=%d.\n",url, long(connection),long(*con_cls), *upload_data_size);
+  // parse parameters
+  const char* c1 = onion_request_get_query(req, "c1");
+  const char* c2 = onion_request_get_query(req, "c2");
 
-  // first request of the connection
-  if (*con_cls == NULL) { 
-    *con_cls = connection; 
-
-    // parse parameters
-    const char* c1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c1");
-    const char* c2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "c2");
-
-    if (c1==NULL) {
-      // must supply c1 parameter!
-      fprintf(stderr,"No c1 parameter.\n");
-      return MHD_NO;
-    }
-
-    // still room on the queue?
-    pthread_mutex_lock(&mutex);
-    if( bItem-aItem+1 >= maxItem ) {
-      // too many requests. reject
-      fprintf(stderr,"Queue full.\n");
-      pthread_mutex_unlock(&mutex);
-      return MHD_NO;
-    }
-    pthread_mutex_unlock(&mutex);
-
-    // new queue item
-    int i = bItem % maxItem;
-
-    // save connection
-    *con_cls = &queue[i]; 
-    queue[i].connection = connection;
-
-    queue[i].c1 = atoi(c1);
-    queue[i].c2 = c2 ? atoi(c2) : -1;
-
-    const char* d1 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d1");
-    const char* d2 = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "d2");
-
-    queue[i].d1 = d1 ? atoi(d1) : -1;
-    queue[i].d2 = d2 ? atoi(d2) : -1;
-
-    fprintf(stderr,"End of handle connection (1st call). %x (%d,%d)\n", long(connection), aItem, bItem);
-
-    // append to the queue and signal worker thread
-    pthread_mutex_lock(&mutex);
-    bItem++;
-    pthread_cond_signal(&condition);
-    pthread_mutex_unlock(&mutex);
-
-    return MHD_YES; 
+  if (c1==NULL) {
+    // must supply c1 parameter!
+    fprintf(stderr,"No c1 parameter.\n");
+    return OCS_INTERNAL_ERROR;
   }
-    
-  *con_cls = connection; 
+
+  // still room on the queue?
+  pthread_mutex_lock(&mutex);
+  if( bItem-aItem+1 >= maxItem ) {
+    // too many requests. reject
+    fprintf(stderr,"Queue full.\n");
+    pthread_mutex_unlock(&mutex);
+    return OCS_INTERNAL_ERROR;
+  }
+  pthread_mutex_unlock(&mutex);
+
+  // new queue item
+  int i = bItem % maxItem;
+
+  queue[i].c1 = atoi(c1);
+  queue[i].c2 = c2 ? atoi(c2) : -1;
+
+  const char* d1 = onion_request_get_query(req, "d1");
+  const char* d2 = onion_request_get_query(req, "d2");
+
+  queue[i].d1 = d1 ? atoi(d1) : -1;
+  queue[i].d2 = d2 ? atoi(d2) : -1;
+
+  fprintf(stderr,"End of handle connection (1st call). %x (%d,%d)\n", long(req), aItem, bItem);
+
+  // append to the queue and signal worker thread
+  pthread_mutex_lock(&mutex);
+  bItem++;
+  pthread_cond_signal(&condition);
+  pthread_mutex_unlock(&mutex);
 
   // send keep-alive response
-  int ret;
-  struct MHD_Response *response;
-  const char *page = "Waiting...\n";
-  response = MHD_create_response_from_buffer(strlen (page), (void*)page, MHD_RESPMEM_PERSISTENT);
-  ret = MHD_add_response_header(response,"Connection","Keep-Alive");
-  
-  fprintf(stderr,"Queuing response.\n");
-  ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-  MHD_destroy_response(response);
+  const char *page = "Done...\n";
+  onion_response_set_header(res,"Transfer-Encoding","Chunked");
+  onion_response_write0(res, page);  
+  onion_response_flush(res);
+  sleep(1);
+  onion_response_write0(res, page);  
+  onion_response_flush(res);
 
-  fprintf(stderr,"End of handle connection. %x (%d,%d) %d\n", long(connection), aItem, bItem, ret);
-  return ret;
+  // wait for signal from worker thread
+  pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
+
+  onion_response_write0(res, page);  
+  onion_response_flush(res);
+
+  fprintf(stderr,"End of handle connection.\n");
+  return OCS_KEEP_ALIVE;
 }
 
 void *computeThread( void *d ) {
@@ -259,14 +245,8 @@ void *computeThread( void *d ) {
       sleep(10);
       fprintf(stderr, "Completed compute\n");
 
-      // post result
-      int ret;
-      struct MHD_Response *response;
-      const char *page = "Done...\n";
-      response = MHD_create_response_from_buffer(strlen (page), (void*)page, MHD_RESPMEM_PERSISTENT);
-      ret = MHD_add_response_header(response,"Connection","close");
-      ret = MHD_queue_response(queue[i].connection, MHD_HTTP_OK, response);
-      MHD_destroy_response(response);
+      // wake up thread
+      pthread_cond_signal(&(queue[i].cond));
     }
   }
 }
@@ -287,48 +267,32 @@ int main(int argc, char *argv[]) {
     // commandline test
     intersect(atoi(argv[1]), atoi(argv[2]));
   } else {
-    // start webserver
-    struct MHD_Daemon * d;
-    
     if (argc != 2) {
       printf("%s PORT\n", argv[0]);
       return 1;
     }
         
-    d = MHD_start_daemon(MHD_USE_DEBUG, atoi(argv[1]), NULL, NULL, &handleRequest, NULL, 
-        MHD_OPTION_CONNECTION_TIMEOUT, 0, 
-        MHD_OPTION_END);
-    
-    if (d == NULL) return 1;
-    fprintf(stderr,"Server ready.\n");
-    
-    // TODO: enter compute loop here
+
+    // setup compute thread
     pthread_t compute_thread;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
     if (pthread_create(&compute_thread, &attr, computeThread, NULL)) return 1;
 
-    // server loop
-    fd_set rs;
-    fd_set ws;
-    fd_set es;
-    int max;
-    while (1) {
-      FD_ZERO (&rs);
-      FD_ZERO (&ws);
-      FD_ZERO (&es);
-                              
-      // try to get file descriptors
-      if (MHD_get_fdset(d, &rs, &ws, &es, &max) != MHD_YES) break;
-      
-      // wait for FDs to get ready
-      fprintf(stderr,"In server loop.\n");
-      select(max + 1, &rs, &ws, &es, NULL);
-      MHD_run(d);
-    }
+    // start webserver
+    onion *o=onion_new(O_THREADED);
 
-    MHD_stop_daemon(d);
+    onion_set_port(o, argv[1]);
+    onion_set_hostname(o,"::");
+    //onion_set_hostname(o,"0.0.0.0");
+    onion_set_timeout(o, 1000000000);
+    onion_set_root_handler(o, onion_handler_new(handleRequest, NULL, NULL) );
+    fprintf(stderr,"Server ready.\n");
+    int error = onion_listen(o);
+    if (error) perror("Cant create the server");
+    
+    onion_free(o);
     return 0;
   }
 

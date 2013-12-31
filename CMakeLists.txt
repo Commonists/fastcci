@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 2.6)
 project(fastcci)
 
 add_executable(fastcci_intersection fastcci_intersection.cc)
-target_link_libraries(fastcci_intersection microhttpd pthread)
+LINK_DIRECTORIES(/usr/local/lib)
+target_link_libraries(fastcci_intersection onion pthread)
 
 add_executable(fastcci fastcci.cc)
 add_executable(fastcci_circulartest fastcci_circulartest.cc)
