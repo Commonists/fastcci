@@ -12,6 +12,7 @@
 #include <onion/response.h>
 
 // thread management objects
+pthread_mutex_t handlerMutex;
 pthread_mutex_t mutex;
 pthread_cond_t condition;
 
@@ -22,6 +23,9 @@ int *fbuf[2] = {0}, fmax[2]={100000,100000}, fnum[2];
 int *cat, maxcat; 
 int *tree; 
 char *mask;
+
+// work item status type
+enum wiStatus { WI_WAITING, WI_COMPUTING, WI_STREAMING, WI_DONE };
 
 // work item queue
 int aItem = 0, bItem = 0;
@@ -35,6 +39,8 @@ struct workItem {
   // query parameters
   int c1, c2; // categories
   int d1, d2; // depths
+  // status
+  wiStatus status;
 } queue[maxItem];
 
 int readFile(const char *fname, int* &buf) {
@@ -204,6 +210,8 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   queue[i].d1 = d1 ? atoi(d1) : -1;
   queue[i].d2 = d2 ? atoi(d2) : -1;
 
+  queue[i].status = WI_WAITING;
+
   fprintf(stderr,"End of handle connection (1st call). %x (%d,%d)\n", long(req), aItem, bItem);
 
   // append to the queue and signal worker thread
@@ -219,9 +227,19 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   onion_response_flush(res);
 
   // wait for signal from worker thread (TODO: have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
-  pthread_mutex_lock(&(queue[i].mutex));
-  pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
-  pthread_mutex_unlock(&(queue[i].mutex));
+  bool done;
+  do {
+    pthread_mutex_lock(&(queue[i].mutex));
+    pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
+    done = (queue[i].status == WI_DONE);
+    pthread_mutex_unlock(&(queue[i].mutex));
+
+    if (!done) {
+      onion_response_write0(res, "..\n");  
+      onion_response_flush(res);
+      onion_response_flush(res);
+    }
+  } while (!done);
 
   onion_response_write0(res, "Done..\n");  
   onion_response_flush(res);
@@ -231,6 +249,21 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   //return OCS_KEEP_ALIVE;
 }
 
+void *notifyThread( void *d ) {
+  while(1) {
+    sleep(2);
+    
+    pthread_mutex_lock(&handlerMutex);
+    pthread_mutex_lock(&mutex);
+    
+    // loop over all active queue items (actually lock &mutex as well!)
+    for (int i=aItem; i<bItem; ++i)
+      pthread_cond_signal(&(queue[i].cond));
+
+    pthread_mutex_unlock(&mutex);
+    pthread_mutex_unlock(&handlerMutex);
+  }
+}
 void *computeThread( void *d ) {
   while(1) {
     // wait for pthread condition
@@ -241,21 +274,30 @@ void *computeThread( void *d ) {
     // process queue
     while (bItem>aItem) {
       // fetch next item
-      pthread_mutex_lock(&mutex);
-      int i = aItem++ % maxItem;
-      pthread_mutex_unlock(&mutex);
+      int i = aItem % maxItem;
 
       // compute result
       fprintf(stderr, "Starting compute\n");
       sleep(10);
       fprintf(stderr, "Completed compute\n");
 
+      queue[i].status = WI_STREAMING;
+
       // stream response
       onion_response_write0(queue[i].res, "result\n");  
       onion_response_flush(queue[i].res);
 
+      queue[i].status = WI_DONE;
+
+      // pop item off queue
+      pthread_mutex_lock(&mutex);
+      aItem++;
+      pthread_mutex_unlock(&mutex);
+
       // wake up thread to finish connection
+      pthread_mutex_lock(&handlerMutex);
       pthread_cond_signal(&(queue[i].cond));
+      pthread_mutex_unlock(&handlerMutex);
     }
   }
 }
@@ -280,14 +322,19 @@ int main(int argc, char *argv[]) {
       printf("%s PORT\n", argv[0]);
       return 1;
     }
-        
-
-    // setup compute thread
-    pthread_t compute_thread;
+    
+    // thread properties
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
+
+    // setup compute thread
+    pthread_t compute_thread;
     if (pthread_create(&compute_thread, &attr, computeThread, NULL)) return 1;
+
+    // setup compute thread
+    pthread_t notify_thread;
+    if (pthread_create(&notify_thread, &attr, notifyThread, NULL)) return 1;
 
     // start webserver
     onion *o=onion_new(O_THREADED);
