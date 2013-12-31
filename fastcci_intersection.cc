@@ -169,6 +169,19 @@ void intersect(int c1, int c2) {
   }
 }
 
+onion_connection_status handleStatus(void *d, onion_request *req, onion_response *res)
+{
+  pthread_mutex_lock(&mutex);
+  onion_response_printf(res, "%d requests in the queue.\n", bItem-aItem);
+  
+  // list all active queue items 
+  //for (int i=aItem; i<bItem; ++i)
+  //  onion_response_printf(res, "");
+
+  pthread_mutex_unlock(&mutex);
+  return OCS_CLOSE_CONNECTION;
+}
+
 onion_connection_status handleRequest(void *d, onion_request *req, onion_response *res)
 {
   // this routine is called by a single thread only (MHD_USE_SELECT_INTERNALLY)
@@ -246,7 +259,6 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
   fprintf(stderr,"End of handle connection.\n");
   return OCS_CLOSE_CONNECTION;
-  //return OCS_KEEP_ALIVE;
 }
 
 void *notifyThread( void *d ) {
@@ -341,9 +353,15 @@ int main(int argc, char *argv[]) {
 
     onion_set_port(o, argv[1]);
     onion_set_hostname(o,"::");
-    //onion_set_hostname(o,"0.0.0.0");
     onion_set_timeout(o, 1000000000);
-    onion_set_root_handler(o, onion_handler_new(handleRequest, NULL, NULL) );
+    //onion_set_root_handler(o, onion_handler_new(handleRequest, NULL, NULL) );
+
+    // add handlers
+    onion_url *url=onion_root_url(o);
+    onion_url_add(url, "status", (void*)handleStatus);
+    onion_url_add(url, "", (void*)handleRequest);
+
+
     fprintf(stderr,"Server ready.\n");
     int error = onion_listen(o);
     if (error) perror("Cant create the server");
