@@ -30,6 +30,8 @@ struct workItem {
   // thread data
   pthread_mutex_t mutex;
   pthread_cond_t cond;
+  // response
+  onion_response *res;
   // query parameters
   int c1, c2; // categories
   int d1, d2; // depths
@@ -190,6 +192,9 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   // new queue item
   int i = bItem % maxItem;
 
+  // store response pointer
+  queue[i].res = res;
+
   queue[i].c1 = atoi(c1);
   queue[i].c2 = c2 ? atoi(c2) : -1;
 
@@ -208,22 +213,22 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   pthread_mutex_unlock(&mutex);
 
   // send keep-alive response
-  const char *page = "Done...\n";
   onion_response_set_header(res,"Transfer-Encoding","Chunked");
-  onion_response_write0(res, page);  
+  onion_response_write0(res, "Computing..\n");  
   onion_response_flush(res);
-  sleep(1);
-  onion_response_write0(res, page);  
   onion_response_flush(res);
 
-  // wait for signal from worker thread
+  // wait for signal from worker thread (TODO: have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
+  pthread_mutex_lock(&(queue[i].mutex));
   pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
+  pthread_mutex_unlock(&(queue[i].mutex));
 
-  onion_response_write0(res, page);  
+  onion_response_write0(res, "Done..\n");  
   onion_response_flush(res);
 
   fprintf(stderr,"End of handle connection.\n");
-  return OCS_KEEP_ALIVE;
+  return OCS_CLOSE_CONNECTION;
+  //return OCS_KEEP_ALIVE;
 }
 
 void *computeThread( void *d ) {
@@ -245,7 +250,11 @@ void *computeThread( void *d ) {
       sleep(10);
       fprintf(stderr, "Completed compute\n");
 
-      // wake up thread
+      // stream response
+      onion_response_write0(queue[i].res, "result\n");  
+      onion_response_flush(queue[i].res);
+
+      // wake up thread to finish connection
       pthread_cond_signal(&(queue[i].cond));
     }
   }
