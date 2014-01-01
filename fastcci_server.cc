@@ -10,6 +10,7 @@
 #include <onion/onion.h>
 #include <onion/handler.h>
 #include <onion/response.h>
+#include <onion/websocket.h>
 
 // thread management objects
 pthread_mutex_t handlerMutex;
@@ -42,6 +43,7 @@ struct workItem {
   pthread_cond_t cond;
   // response
   onion_response *res;
+  onion_websocket *ws;
   // query parameters
   int c1, c2; // categories
   int d1, d2; // depths
@@ -356,8 +358,9 @@ onion_connection_status handleRequestXHR(void *d, onion_request *req, onion_resp
   if (i<0) return OCS_INTERNAL_ERROR;
 
   // store response pointer
-  queue[i].res = res;
   queue[i].connection = WC_XHR;
+  queue[i].res = res;
+  queue[i].ws  = NULL;
 
   // send keep-alive response
   onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
@@ -388,11 +391,11 @@ onion_connection_status handleRequestSocket(void *d, onion_request *req, onion_r
   if (i<0) return OCS_INTERNAL_ERROR;
 
   // store websocket data
+  onion_websocket *ws = onion_websocket_new(req, res);
+  if (!ws) return OCS_INTERNAL_ERROR;
   queue[i].connection = WC_SOCKET;
-
-  // send keep-alive response
-  onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
-  onion_response_set_header(res, "Content-Type","text/plain; charset=utf8");
+  queue[i].ws  = ws;
+  queue[i].res = NULL;
 
   // append to the queue and signal worker thread
   pthread_mutex_lock(&mutex);
@@ -412,16 +415,12 @@ onion_connection_status handleRequestSocket(void *d, onion_request *req, onion_r
     switch (status) {
       case WS_WAITING :
         // send number of jobs ahead of this one in queue
-        onion_response_printf(res, "WAITING %d\n", i-aItem);  
-        onion_response_flush(res);
-        onion_response_flush(res);
+        onion_websocket_printf(ws, "WAITING %d\n", i-aItem);  
         break;
       case WS_PREPROCESS :
       case WS_COMPUTING :
         // send intermediate result sizes
-        onion_response_printf(res, "WORKING %d %d\n", fnum[0], fnum[1]);  
-        onion_response_flush(res);
-        onion_response_flush(res);
+        onion_websocket_printf(ws, "WORKING %d %d\n", fnum[0], fnum[1]);  
         break;
     }
     
@@ -429,8 +428,7 @@ onion_connection_status handleRequestSocket(void *d, onion_request *req, onion_r
 
   } while (status != WS_DONE);
 
-  onion_response_write0(res, "DONE\n");  
-  onion_response_flush(res);
+  onion_websocket_printf(ws, "DONE\n");  
 
   fprintf(stderr,"End of handle connection.\n");
   return OCS_CLOSE_CONNECTION;
