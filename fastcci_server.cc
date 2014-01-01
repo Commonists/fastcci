@@ -352,7 +352,8 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
   // send keep-alive response
   onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
-  onion_response_set_header(res, "Transfer-Encoding","Chunked");
+  onion_response_set_header(res, "Content-Type","text/plain");
+  onion_response_set_header(res, "Transfer-Encoding","chunked");
   onion_response_write0(res, "QUEUED\n");  
   onion_response_flush(res);
   onion_response_flush(res);
