@@ -25,10 +25,10 @@ int *tree;
 char *mask;
 
 // work item type
-enum wiType { WT_INTERSECT };
+enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN };
 
 // work item status type
-enum wiStatus { WS_WAITING, WS_COMPUTING, WS_STREAMING, WS_DONE };
+enum wiStatus { WS_WAITING, WS_PREPROCESS, WS_COMPUTING, WS_STREAMING, WS_DONE };
 
 // work item queue
 int aItem = 0, bItem = 0;
@@ -93,7 +93,32 @@ int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
-void intersect(int qi) {
+void traverse(int qi) {
+  int n = 0; // number of current output item
+
+  int outstart = queue[qi].o;
+  int outend   = outstart + queue[qi].s;
+  onion_response *res = queue[qi].res;
+
+  // sort
+  qsort(fbuf[0], fnum[0], sizeof(int), compare);
+
+  // output unique files
+  int lr=-1;
+  for (int i=0; i<fnum[0]; ++i) 
+    if (fbuf[0][i]!=lr) {
+      n++;
+      // are we still below the offset?
+      if (n<=outstart) continue;
+      // output file      
+      lr=fbuf[0][i];
+      onion_response_printf(res, "%d\n", lr);
+      // are we at the end of the output window?
+      if (n>=outend) break;
+    }
+}
+
+void notin(int qi) {
   int cid[2] = {queue[qi].c1, queue[qi].c2};
   int n = 0; // number of current output item
 
@@ -101,36 +126,42 @@ void intersect(int qi) {
   int outend   = outstart + queue[qi].s;
   onion_response *res = queue[qi].res;
 
-  // generate intermediate results
-  for (int i=0; i<((cid[0]!=cid[1])?2:1); ++i) {
-    // clear visitation mask
-    memset(mask,0,maxcat);
-    
-    // fetch files through deep traversal
-    resbuf=i;
-    fetchFiles(cid[i],0);
-    fprintf(stderr,"fnum(%d) %d\n", cid[i], fnum[i]);
-  }
+  // sort both and subtract then
+  fprintf(stderr,"using sort strategy.\n");
+  qsort(fbuf[0], fnum[0], sizeof(int), compare);
+  qsort(fbuf[1], fnum[1], sizeof(int), compare);
 
-  // if the same cat was specified twice, just list all the files
-  if (cid[0]==cid[1]) {
-    fprintf(stderr,"pre sort\n");
-    qsort(fbuf[0], fnum[0], sizeof(int), compare);
-    fprintf(stderr,"post sort\n");
-    int lr=-1;
-    for (int i=0; i<fnum[0]; ++i) 
-      if (fbuf[0][i]!=lr) {
+  // perform subtraction
+  int i0=0, i1=1, r, lr=-1;
+  do {
+    if (fbuf[0][i0] < fbuf[1][i1]) 
+      i0++;
+    else if (fbuf[0][i0] > fbuf[1][i1]) 
+      i1++;
+    else {
+      r = fbuf[0][i0];
+      
+      if (r!=lr) {
+        // are we at the output offset?
+        if (n>=outstart) onion_response_printf(res, "%d\n", r);
         n++;
-        // are we still below the offset?
-        if (n<=outstart) continue;
-        // output file      
-        lr=fbuf[0][i];
-        onion_response_printf(res, "%d\n", lr);
-        // are we at the end of the output window?
         if (n>=outend) break;
       }
-    return;
-  }
+
+      lr = r;
+      i0++;
+      i1++;
+    }
+  } while (i0 < fnum[0] && i1<fnum[1]);
+}
+
+void intersect(int qi) {
+  int cid[2] = {queue[qi].c1, queue[qi].c2};
+  int n = 0; // number of current output item
+
+  int outstart = queue[qi].o;
+  int outend   = outstart + queue[qi].s;
+  onion_response *res = queue[qi].res;
 
   // decide on an intersection strategy
   if (fnum[0]>1000000 || fnum[1]>1000000) {
@@ -261,6 +292,24 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
   queue[i].status = WS_WAITING;
 
+  if (queue[i].c1==queue[i].c2)
+    queue[i].type = WT_TRAVERSE;
+  else {
+    queue[i].type = WT_INTERSECT;
+
+    const char* aparam = onion_request_get_query(req, "a");
+    if (aparam) {
+      if (strcmp(aparam,"and"))
+        queue[i].type = WT_INTERSECT;
+      else if (strcmp(aparam,"not"))
+        queue[i].type = WT_NOTIN;
+      else if (strcmp(aparam,"list") || queue[i].c1==queue[i].c2)
+        queue[i].type = WT_TRAVERSE;
+      else
+        return OCS_INTERNAL_ERROR;
+    }
+  }
+
   // send keep-alive response
   onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
   onion_response_set_header(res, "Transfer-Encoding","Chunked");
@@ -290,6 +339,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
         onion_response_flush(res);
         onion_response_flush(res);
         break;
+      case WS_PREPROCESS :
       case WS_COMPUTING :
         // send intermediate result sizes
         onion_response_printf(res, "WORKING %d %d\n", fnum[0], fnum[1]);  
@@ -342,10 +392,34 @@ void *computeThread( void *d ) {
 
       fnum[0] = 0;
       fnum[1] = 0;
-      queue[i].status = WS_COMPUTING;
+      queue[i].status = WS_PREPROCESS;
+
+      // generate intermediate results
+      int cid[2] = {queue[i].c1, queue[i].c2};
+      for (int i=0; i<((cid[0]!=cid[1])?2:1); ++i) {
+        // clear visitation mask
+        memset(mask,0,maxcat);
+        
+        // fetch files through deep traversal
+        resbuf=i;
+        fetchFiles(cid[i],0);
+        fprintf(stderr,"fnum(%d) %d\n", cid[i], fnum[i]);
+      }
 
       // compute result
-      intersect(i);
+      queue[i].status = WS_COMPUTING;
+
+      switch (queue[i].type) {
+        case WT_TRAVERSE :
+          traverse(i);
+          break;
+        case WT_NOTIN :
+          notin(i);
+          break;
+        case WT_INTERSECT :
+          intersect(i);
+          break;
+      }
 
       queue[i].status = WS_STREAMING;
 
