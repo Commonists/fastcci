@@ -104,6 +104,7 @@ void traverse(int qi) {
   qsort(fbuf[0], fnum[0], sizeof(int), compare);
 
   // output unique files
+  queue[qi].status = WS_STREAMING;
   int lr=-1;
   for (int i=0; i<fnum[0]; ++i) 
     if (fbuf[0][i]!=lr) {
@@ -140,6 +141,7 @@ void notin(int qi) {
 
   // perform subtraction
   int i0=0, i1=0, r, lr=-1;
+  queue[qi].status = WS_STREAMING;
   do {
     if (fbuf[0][i0] < fbuf[1][i1]) {
       r = fbuf[0][i0];
@@ -208,6 +210,7 @@ void intersect(int qi) {
     }
     qsort(fbuf[small], fnum[small], sizeof(int), compare);
 
+    queue[qi].status = WS_STREAMING;
     int *j0, *j1, r, *j, *end=&(fbuf[small][fnum[small]+1]);
     for (int i=0; i<fnum[large]; ++i) {
       j = (int*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof(int), compare);
@@ -239,6 +242,7 @@ void intersect(int qi) {
     qsort(fbuf[1], fnum[1], sizeof(int), compare);
 
     // perform intersection
+    queue[qi].status = WS_STREAMING;
     int i0=0, i1=0, r, lr=-1;
     do {
       if (fbuf[0][i0] < fbuf[1][i1]) 
@@ -325,23 +329,26 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
   queue[i].status = WS_WAITING;
 
+  const char* aparam = onion_request_get_query(req, "a");
+
   if (queue[i].c1==queue[i].c2)
     queue[i].type = WT_TRAVERSE;
   else {
     queue[i].type = WT_INTERSECT;
 
-    const char* aparam = onion_request_get_query(req, "a");
-    if (aparam) {
-      if (strcmp(aparam,"and"))
+    if (aparam != NULL) {
+      if (strcmp(aparam,"and")==0)
         queue[i].type = WT_INTERSECT;
-      else if (strcmp(aparam,"not"))
+      else if (strcmp(aparam,"not")==0)
         queue[i].type = WT_NOTIN;
-      else if (strcmp(aparam,"list") || queue[i].c1==queue[i].c2)
+      else if (strcmp(aparam,"list")==0)
         queue[i].type = WT_TRAVERSE;
       else
         return OCS_INTERNAL_ERROR;
     }
   }
+
+  fprintf(stderr,"aparam='%s' type=%d\n", aparam, queue[i].type);
 
   // send keep-alive response
   onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
@@ -454,11 +461,6 @@ void *computeThread( void *d ) {
           break;
       }
 
-      queue[i].status = WS_STREAMING;
-
-      // stream response
-      onion_response_write0(queue[i].res, "result\n");  
-      onion_response_flush(queue[i].res);
 
       queue[i].status = WS_DONE;
 
