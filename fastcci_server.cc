@@ -25,6 +25,9 @@ int *tree;
 char *mask;
 
 // work item type
+enum wiConn { WC_XHR, WC_SOCKET };
+
+// work item type
 enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN };
 
 // work item status type
@@ -44,6 +47,8 @@ struct workItem {
   int d1, d2; // depths
   // offset and size
   int o,s;
+  // conenction type
+  wiConn connection;
   // job type
   wiType type;
   // status
@@ -280,12 +285,8 @@ onion_connection_status handleStatus(void *d, onion_request *req, onion_response
   return OCS_CLOSE_CONNECTION;
 }
 
-onion_connection_status handleRequest(void *d, onion_request *req, onion_response *res)
+int queueRequest(onion_request *req)
 {
-  // this routine is called by a single thread only (MHD_USE_SELECT_INTERNALLY)
-
-  fprintf(stderr,"Handle Request '%s'\n", onion_request_get_path(req) );
-
   // parse parameters
   const char* c1 = onion_request_get_query(req, "c1");
   const char* c2 = onion_request_get_query(req, "c2");
@@ -293,7 +294,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   if (c1==NULL) {
     // must supply c1 parameter!
     fprintf(stderr,"No c1 parameter.\n");
-    return OCS_INTERNAL_ERROR;
+    return -1;
   }
 
   // still room on the queue?
@@ -302,15 +303,12 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
     // too many requests. reject
     fprintf(stderr,"Queue full.\n");
     pthread_mutex_unlock(&mutex);
-    return OCS_INTERNAL_ERROR;
+    return -1;
   }
   pthread_mutex_unlock(&mutex);
 
   // new queue item
   int i = bItem % maxItem;
-
-  // store response pointer
-  queue[i].res = res;
 
   queue[i].c1 = atoi(c1);
   queue[i].c2 = c2 ? atoi(c2) : queue[i].c1;
@@ -348,15 +346,22 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
     }
   }
 
-  fprintf(stderr,"aparam='%s' type=%d\n", aparam, queue[i].type);
+  return i;
+}
+
+onion_connection_status handleRequestXHR(void *d, onion_request *req, onion_response *res)
+{
+  // try to queue the request
+  int i=queueRequest(req);
+  if (i<0) return OCS_INTERNAL_ERROR;
+
+  // store response pointer
+  queue[i].res = res;
+  queue[i].connection = WC_XHR;
 
   // send keep-alive response
   onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
-  onion_response_set_header(res, "Content-Type","text/plain");
-  onion_response_set_header(res, "Transfer-Encoding","chunked");
-  onion_response_write0(res, "QUEUED\n");  
-  onion_response_flush(res);
-  onion_response_flush(res);
+  onion_response_set_header(res, "Content-Type","text/plain; charset=utf8");
 
   // append to the queue and signal worker thread
   pthread_mutex_lock(&mutex);
@@ -364,7 +369,38 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   pthread_cond_signal(&condition);
   pthread_mutex_unlock(&mutex);
 
-  // wait for signal from worker thread (TODO: have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
+  // wait for signal from worker thread 
+  wiStatus status;
+  do {
+    pthread_mutex_lock(&(queue[i].mutex));
+    pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
+    status = queue[i].status;
+    pthread_mutex_unlock(&(queue[i].mutex));
+  } while (status != WS_DONE);
+
+  return OCS_CLOSE_CONNECTION;
+}
+
+onion_connection_status handleRequestSocket(void *d, onion_request *req, onion_response *res)
+{
+  // try to queue the request
+  int i=queueRequest(req);
+  if (i<0) return OCS_INTERNAL_ERROR;
+
+  // store websocket data
+  queue[i].connection = WC_SOCKET;
+
+  // send keep-alive response
+  onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
+  onion_response_set_header(res, "Content-Type","text/plain; charset=utf8");
+
+  // append to the queue and signal worker thread
+  pthread_mutex_lock(&mutex);
+  bItem++;
+  pthread_cond_signal(&condition);
+  pthread_mutex_unlock(&mutex);
+
+  // wait for signal from worker thread (have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
   wiStatus status;
   do {
     pthread_mutex_lock(&(queue[i].mutex));
@@ -519,7 +555,8 @@ int main(int argc, char *argv[]) {
   // add handlers
   onion_url *url=onion_root_url(o);
   onion_url_add(url, "status", (void*)handleStatus);
-  onion_url_add(url, "", (void*)handleRequest);
+  onion_url_add(url, "xhr",    (void*)handleRequestXHR);
+  onion_url_add(url, "socket", (void*)handleRequestSocket);
 
 
   fprintf(stderr,"Server ready.\n");
