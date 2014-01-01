@@ -106,6 +106,7 @@ void traverse(int qi) {
   int outstart = queue[qi].o;
   int outend   = outstart + queue[qi].s;
   onion_response *res = queue[qi].res;
+  onion_websocket *ws = queue[qi].ws;
 
   // sort
   qsort(fbuf[0], fnum[0], sizeof(int), compare);
@@ -120,7 +121,8 @@ void traverse(int qi) {
       if (n<=outstart) continue;
       // output file      
       lr=fbuf[0][i];
-      onion_response_printf(res, "%d\n", lr);
+      if (res) onion_response_printf(res, "%d\n", lr);
+      if (ws)  onion_websocket_printf(ws, "%d\n", lr);
       // are we at the end of the output window?
       if (n>=outend) break;
     }
@@ -133,6 +135,7 @@ void notin(int qi) {
   int outstart = queue[qi].o;
   int outend   = outstart + queue[qi].s;
   onion_response *res = queue[qi].res;
+  onion_websocket *ws = queue[qi].ws;
 
   // sort both and subtract then
   fprintf(stderr,"using sort strategy.\n");
@@ -155,7 +158,10 @@ void notin(int qi) {
       
       if (r!=lr) {
         // are we at the output offset?
-        if (n>=outstart) onion_response_printf(res, "%d\n", r);
+        if (n>=outstart) {
+          if (res) onion_response_printf(res, "%d\n", r);
+          if (ws)  onion_websocket_printf(ws, "%d\n", r);
+        }
         n++;
         if (n>=outend) break;
       }
@@ -187,7 +193,10 @@ void notin(int qi) {
       
       if (r!=lr) {
         // are we at the output offset?
-        if (n>=outstart) onion_response_printf(res, "%d\n", r);
+        if (n>=outstart) {
+          if (res) onion_response_printf(res, "%d\n", r);
+          if (ws)  onion_websocket_printf(ws, "%d\n", r);
+        }
         n++;
         if (n>=outend) break;
       }
@@ -204,6 +213,7 @@ void intersect(int qi) {
   int outstart = queue[qi].o;
   int outend   = outstart + queue[qi].s;
   onion_response *res = queue[qi].res;
+  onion_websocket *ws = queue[qi].ws;
 
   // decide on an intersection strategy
   if (fnum[0]>1000000 || fnum[1]>1000000) {
@@ -223,7 +233,10 @@ void intersect(int qi) {
       j = (int*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof(int), compare);
       if (j) {
         // are we at the output offset?
-        if (n>=outstart) onion_response_printf(res, "%d\n", fbuf[large][i]);
+        if (n>=outstart) {
+          if (res) onion_response_printf(res, "%d\n", fbuf[large][i]);
+          if (ws)  onion_websocket_printf(ws, "%d\n", fbuf[large][i]);
+        }
         n++;
         if (n>=outend) break;
 
@@ -261,7 +274,10 @@ void intersect(int qi) {
         
         if (r!=lr) {
           // are we at the output offset?
-          if (n>=outstart) onion_response_printf(res, "%d\n", r);
+          if (n>=outstart) {
+            if (res) onion_response_printf(res, "%d\n", r);
+            if (ws)  onion_websocket_printf(ws, "%d\n", r);
+          }
           n++;
           if (n>=outend) break;
         }
@@ -443,7 +459,8 @@ void *notifyThread( void *d ) {
     
     // loop over all active queue items (actually lock &mutex as well!)
     for (int i=aItem; i<bItem; ++i)
-      pthread_cond_signal(&(queue[i].cond));
+      if (queue[i].connection == WC_SOCKET)
+        pthread_cond_signal(&(queue[i].cond));
 
     pthread_mutex_unlock(&mutex);
     pthread_mutex_unlock(&handlerMutex);
