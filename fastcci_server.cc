@@ -130,15 +130,18 @@ void notin(int qi) {
   fprintf(stderr,"using sort strategy.\n");
   qsort(fbuf[0], fnum[0], sizeof(int), compare);
   qsort(fbuf[1], fnum[1], sizeof(int), compare);
+/*
+  1 2
+  3 3
+  4 5
+  8 8
+  9 
+*/
 
   // perform subtraction
-  int i0=0, i1=1, r, lr=-1;
+  int i0=0, i1=0, r, lr=-1;
   do {
-    if (fbuf[0][i0] < fbuf[1][i1]) 
-      i0++;
-    else if (fbuf[0][i0] > fbuf[1][i1]) 
-      i1++;
-    else {
+    if (fbuf[0][i0] < fbuf[1][i1]) {
       r = fbuf[0][i0];
       
       if (r!=lr) {
@@ -149,10 +152,40 @@ void notin(int qi) {
       }
 
       lr = r;
-      i0++;
-      i1++;
+
+      // advance i0 until we are at a different entry
+      for(; i0<fnum[0] && fbuf[0][i0]==r; i0++);
+    } else if (fbuf[0][i0] > fbuf[1][i1]) { 
+      r = fbuf[1][i1];
+
+      // advance i1 until we are at a different entry
+      for(; i1<fnum[1] && fbuf[1][i1]==r; i1++);
+    } else { // equal
+      // advance i0 until we are at a different entry
+      r = fbuf[0][i0];
+      for(; i0<fnum[0] && fbuf[0][i0]==r; i0++);
+
+      // advance i1 until we are at a different entry
+      r = fbuf[1][i1];
+      for(; i1<fnum[1] && fbuf[1][i1]==r; i1++);
     }
   } while (i0 < fnum[0] && i1<fnum[1]);
+
+  // dump the remainder of c1
+  if (i0 < fnum[0] && i1>=fnum[1]) {
+    for (;i0 < fnum[0]; ++i0) {
+      r = fbuf[0][i0];
+      
+      if (r!=lr) {
+        // are we at the output offset?
+        if (n>=outstart) onion_response_printf(res, "%d\n", r);
+        n++;
+        if (n>=outend) break;
+      }
+
+      lr = r;
+    }
+  }
 }
 
 void intersect(int qi) {
@@ -206,7 +239,7 @@ void intersect(int qi) {
     qsort(fbuf[1], fnum[1], sizeof(int), compare);
 
     // perform intersection
-    int i0=0, i1=1, r, lr=-1;
+    int i0=0, i1=0, r, lr=-1;
     do {
       if (fbuf[0][i0] < fbuf[1][i1]) 
         i0++;
