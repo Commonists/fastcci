@@ -101,21 +101,31 @@ int compare (const void * a, const void * b) {
 }
 
 // buffering of up to 50 search results (the amount we can safely API query)
-const int wsmaxqueue = 50, wsmaxbuf = 15*wsmaxqueue;
-char wsbuf[wsmaxbuf];
-int wsnumqueue=0, wsindex=0;
-void websocketFlush(onion_websocket *ws) {
-  if (wsindex==0) return;
-  wsbuf[wsindex-1] = 0;
-  onion_websocket_printf(ws, "RESULT %s\n", wsbuf);
-  wsnumqueue=0; wsindex=0;
+const int resmaxqueue = 50, resmaxbuf = 15*resmaxqueue;
+char rescombuf[resmaxbuf];
+int resnumqueue=0, residx=0;
+void resultFlush(int i) {
+  // nothing to flush
+  if (residx==0) return;
+
+  // 
+  onion_response *res = queue[i].res;
+  onion_websocket *ws = queue[i].ws;
+
+  // zero terminate buffer
+  rescombuf[residx-1] = 0;
+
+  // send buffer and reset inices
+  if (res) onion_response_printf(res, "RESULT %s\n", rescombuf);
+  if (ws)  onion_websocket_printf(ws, "RESULT %s\n", rescombuf);
+  resnumqueue=0; residx=0;
 }
-void websocketQueue(onion_websocket *ws, int item) {
+void resultQueue(int i, int item) {
   // TODO check for truncation (but what then?!)
-  wsindex += snprintf(&(wsbuf[wsindex]), wsmaxbuf-wsindex, "%d|", item);
+  residx += snprintf(&(rescombuf[residx]), resmaxbuf-residx, "%d|", item);
 
   // queued enough values?
-  if (++wsnumqueue == wsmaxqueue) websocketFlush(ws);
+  if (++resnumqueue == resmaxqueue) resultFlush(i);
 }
 
 
@@ -140,11 +150,11 @@ void traverse(int qi) {
       if (n<=outstart) continue;
       // output file      
       lr=fbuf[0][i];
-      if (res) onion_response_printf(res, "%d\n", lr);
-      if (ws)  onion_websocket_printf(ws, "%d\n", lr);
+      resultQueue(qi, lr);
       // are we at the end of the output window?
       if (n>=outend) break;
     }
+  resultFlush(qi);
 }
 
 void notin(int qi) {
@@ -177,10 +187,7 @@ void notin(int qi) {
       
       if (r!=lr) {
         // are we at the output offset?
-        if (n>=outstart) {
-          if (res) onion_response_printf(res, "%d\n", r);
-          if (ws)  onion_websocket_printf(ws, "%d\n", r);
-        }
+        if (n>=outstart) resultQueue(qi, r);
         n++;
         if (n>=outend) break;
       }
@@ -212,10 +219,7 @@ void notin(int qi) {
       
       if (r!=lr) {
         // are we at the output offset?
-        if (n>=outstart) {
-          if (res) onion_response_printf(res, "%d\n", r);
-          if (ws)  onion_websocket_printf(ws, "%d\n", r);
-        }
+        if (n>=outstart) resultQueue(qi, r);
         n++;
         if (n>=outend) break;
       }
@@ -223,6 +227,8 @@ void notin(int qi) {
       lr = r;
     }
   }
+
+  resultFlush(qi);
 }
 
 void intersect(int qi) {
@@ -252,10 +258,7 @@ void intersect(int qi) {
       j = (int*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof(int), compare);
       if (j) {
         // are we at the output offset?
-        if (n>=outstart) {
-          if (res) onion_response_printf(res, "%d\n", fbuf[large][i]);
-          if (ws)  onion_websocket_printf(ws, "%d\n", fbuf[large][i]);
-        }
+        if (n>=outstart) resultQueue(qi, fbuf[large][i]);
         n++;
         if (n>=outend) break;
 
@@ -293,10 +296,7 @@ void intersect(int qi) {
         
         if (r!=lr) {
           // are we at the output offset?
-          if (n>=outstart) {
-            if (res) onion_response_printf(res, "%d\n", r);
-            if (ws)  onion_websocket_printf(ws, "%d\n", r);
-          }
+          if (n>=outstart) resultQueue(qi, r);
           n++;
           if (n>=outend) break;
         }
@@ -307,6 +307,8 @@ void intersect(int qi) {
       }
     } while (i0 < fnum[0] && i1<fnum[1]);
   }
+
+  resultFlush(qi);
 }
 
 onion_connection_status handleStatus(void *d, onion_request *req, onion_response *res)
@@ -392,93 +394,92 @@ onion_connection_status handleRequestXHR(void *d, onion_request *req, onion_resp
   int i=queueRequest(req);
   if (i<0) return OCS_INTERNAL_ERROR;
 
-  // store response pointer
-  queue[i].connection = WC_XHR;
-  queue[i].res = res;
-  queue[i].ws  = NULL;
-
-  // send keep-alive response
-  onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
-  onion_response_set_header(res, "Content-Type","text/plain; charset=utf8");
-
-  // append to the queue and signal worker thread
-  pthread_mutex_lock(&mutex);
-  bItem++;
-  pthread_cond_signal(&condition);
-  pthread_mutex_unlock(&mutex);
-
-  // wait for signal from worker thread 
-  wiStatus status;
-  do {
-    pthread_mutex_lock(&(queue[i].mutex));
-    pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
-    status = queue[i].status;
-    pthread_mutex_unlock(&(queue[i].mutex));
-  } while (status != WS_DONE);
 
   return OCS_CLOSE_CONNECTION;
 }
 
-onion_connection_status handleRequestSocket(void *d, onion_request *req, onion_response *res)
+onion_connection_status handleRequest(void *d, onion_request *req, onion_response *res)
 {
   // try to queue the request
   int i=queueRequest(req);
   if (i<0) return OCS_INTERNAL_ERROR;
 
-  fprintf(stderr,"before ws new\n");
-
-  // store websocket data
+  // attempt to open a websocket connection
   onion_websocket *ws = onion_websocket_new(req, res);
-  fprintf(stderr,"after ws new %lx\n", long(ws));
-  if (!ws) return OCS_INTERNAL_ERROR;
-  queue[i].connection = WC_SOCKET;
-  queue[i].ws  = ws;
-  queue[i].res = NULL;
+  if (!ws) {
+    //
+    // HTTP connection (fallback)
+    //
 
-  fprintf(stderr,"append\n");
+    queue[i].connection = WC_XHR;
+    queue[i].res = res;
+    queue[i].ws  = NULL;
 
-  onion_websocket_printf(ws, "QUEUED %d\n", i-aItem);  
-  // append to the queue and signal worker thread
+    // send keep-alive response
+    onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
+    onion_response_set_header(res, "Content-Type","text/plain; charset=utf8");
 
-  pthread_mutex_lock(&mutex);
-  bItem++;
-  pthread_cond_signal(&condition);
-  pthread_mutex_unlock(&mutex);
-  fprintf(stderr,"append done\n");
+    // append to the queue and signal worker thread
+    pthread_mutex_lock(&mutex);
+    bItem++;
+    pthread_cond_signal(&condition);
+    pthread_mutex_unlock(&mutex);
 
-  // wait for signal from worker thread (have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
-  wiStatus status;
-  do {
-    pthread_mutex_lock(&(queue[i].mutex));
-  fprintf(stderr,"locked\n");
-    pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
-  fprintf(stderr,"wait done\n");
-    status = queue[i].status;
-    pthread_mutex_unlock(&(queue[i].mutex));
-  fprintf(stderr,"unlocked\n");
+    // wait for signal from worker thread 
+    wiStatus status;
+    do {
+      pthread_mutex_lock(&(queue[i].mutex));
+      pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
+      status = queue[i].status;
+      pthread_mutex_unlock(&(queue[i].mutex));
+    } while (status != WS_DONE);
 
-    fprintf(stderr,"notify status %d\n", status);
-    switch (status) {
-      case WS_WAITING :
-        // send number of jobs ahead of this one in queue
-        onion_websocket_printf(ws, "WAITING %d\n", i-aItem);  
-        break;
-      case WS_PREPROCESS :
-      case WS_COMPUTING :
-        // send intermediate result sizes
-        onion_websocket_printf(ws, "WORKING %d %d\n", fnum[0], fnum[1]);  
-        break;
-    }
-    
-    // don't do anything if status is WS_STREAMING, the compute task is sending data
+  } else {
+    //
+    // Websocket connection
+    //
 
-  } while (status != WS_DONE);
+    queue[i].connection = WC_SOCKET;
+    queue[i].ws  = ws;
+    queue[i].res = NULL;
 
-  onion_websocket_printf(ws, "DONE\n");  
+    onion_websocket_printf(ws, "QUEUED %d\n", i-aItem);  
+
+    // append to the queue and signal worker thread
+    pthread_mutex_lock(&mutex);
+    bItem++;
+    pthread_cond_signal(&condition);
+    pthread_mutex_unlock(&mutex);
+
+    // wait for signal from worker thread (have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
+    wiStatus status;
+    do {
+      pthread_mutex_lock(&(queue[i].mutex));
+      pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
+      status = queue[i].status;
+      pthread_mutex_unlock(&(queue[i].mutex));
+
+      fprintf(stderr,"notify status %d\n", status);
+      switch (status) {
+        case WS_WAITING :
+          // send number of jobs ahead of this one in queue
+          onion_websocket_printf(ws, "WAITING %d\n", i-aItem);  
+          break;
+        case WS_PREPROCESS :
+        case WS_COMPUTING :
+          // send intermediate result sizes
+          onion_websocket_printf(ws, "WORKING %d %d\n", fnum[0], fnum[1]);  
+          break;
+      }
+      // don't do anything if status is WS_STREAMING, the compute task is sending data
+    } while (status != WS_DONE);
+
+    onion_websocket_printf(ws, "DONE\n");
+
+  }
 
   fprintf(stderr,"End of handle connection.\n");
   return OCS_CLOSE_CONNECTION;
-  //return OCS_WEBSOCKET;
 }
 
 void *notifyThread( void *d ) {
@@ -595,14 +596,11 @@ int main(int argc, char *argv[]) {
   onion_set_port(o, argv[1]);
   onion_set_hostname(o,"::");
   onion_set_timeout(o, 1000000000);
-  //onion_set_root_handler(o, onion_handler_new(handleRequest, NULL, NULL) );
 
   // add handlers
   onion_url *url=onion_root_url(o);
   onion_url_add(url, "status", (void*)handleStatus);
-  onion_url_add(url, "xhr",    (void*)handleRequestXHR);
-  onion_url_add(url, "socket", (void*)handleRequestSocket);
-
+  onion_url_add(url, "",    (void*)handleRequest);
 
   fprintf(stderr,"Server ready.\n");
   int error = onion_listen(o);
