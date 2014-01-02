@@ -633,7 +633,7 @@ int main(int argc, char *argv[]) {
   onion *o=onion_new(O_THREADED);
 
   onion_set_port(o, argv[1]);
-  onion_set_hostname(o,"::");
+  onion_set_hostname(o,"0.0.0.0");
   onion_set_timeout(o, 1000000000);
 
   // add handlers
