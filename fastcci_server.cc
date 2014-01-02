@@ -406,26 +406,37 @@ onion_connection_status handleRequestSocket(void *d, onion_request *req, onion_r
   int i=queueRequest(req);
   if (i<0) return OCS_INTERNAL_ERROR;
 
+  fprintf(stderr,"before ws new\n");
+
   // store websocket data
   onion_websocket *ws = onion_websocket_new(req, res);
+  fprintf(stderr,"after ws new %lx\n", long(ws));
   if (!ws) return OCS_INTERNAL_ERROR;
   queue[i].connection = WC_SOCKET;
   queue[i].ws  = ws;
   queue[i].res = NULL;
 
+  fprintf(stderr,"append\n");
+
+  onion_websocket_printf(ws, "QUEUED %d\n", i-aItem);  
   // append to the queue and signal worker thread
+
   pthread_mutex_lock(&mutex);
   bItem++;
   pthread_cond_signal(&condition);
   pthread_mutex_unlock(&mutex);
+  fprintf(stderr,"append done\n");
 
   // wait for signal from worker thread (have a third thread periodically signal, only print result when the calculation is done, otherwise print status)
   wiStatus status;
   do {
     pthread_mutex_lock(&(queue[i].mutex));
+  fprintf(stderr,"locked\n");
     pthread_cond_wait(&(queue[i].cond), &(queue[i].mutex));
+  fprintf(stderr,"wait done\n");
     status = queue[i].status;
     pthread_mutex_unlock(&(queue[i].mutex));
+  fprintf(stderr,"unlocked\n");
 
     fprintf(stderr,"notify status %d\n", status);
     switch (status) {
@@ -448,6 +459,7 @@ onion_connection_status handleRequestSocket(void *d, onion_request *req, onion_r
 
   fprintf(stderr,"End of handle connection.\n");
   return OCS_CLOSE_CONNECTION;
+  //return OCS_WEBSOCKET;
 }
 
 void *notifyThread( void *d ) {
@@ -479,8 +491,7 @@ void *computeThread( void *d ) {
       int i = aItem % maxItem;
 
       // signal start of compute
-      onion_response_write0(queue[i].res, "COMPUTE_START\n");  
-      onion_response_flush(queue[i].res);
+      if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START\n");  
 
       fnum[0] = 0;
       fnum[1] = 0;
