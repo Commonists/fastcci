@@ -100,6 +100,25 @@ int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
+// buffering of up to 50 search results (the amount we can safely API query)
+const int wsmaxqueue = 50, wsmaxbuf = 15*wsmaxqueue;
+char wsbuf[wsmaxbuf];
+int wsnumqueue=0, wsindex=0;
+void websocketFlush(onion_websocket *ws) {
+  if (wsindex==0) return;
+  wsbuf[wsindex-1] = 0;
+  onion_websocket_printf(ws, "RESULT %s\n", wsbuf);
+  wsnumqueue=0; wsindex=0;
+}
+void websocketQueue(onion_websocket *ws, int item) {
+  // TODO check for truncation (but what then?!)
+  wsindex += snprintf(&(wsbuf[wsindex]), wsmaxbuf-wsindex, "%d|", item);
+
+  // queued enough values?
+  if (++wsnumqueue == wsmaxqueue) websocketFlush(ws);
+}
+
+
 void traverse(int qi) {
   int n = 0; // number of current output item
 
