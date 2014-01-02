@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #if !defined(__APPLE__)
 #include <malloc.h>
@@ -127,6 +128,23 @@ void resultQueue(int i, int item) {
   // queued enough values?
   if (++resnumqueue == resmaxqueue) resultFlush(i);
 }
+ssize_t resultPrintf(int i, const char *fmt, ...) {
+  int ret;
+  char buf[512];
+  va_list myargs;
+
+  va_start(myargs, fmt);
+  ret = vsnprintf(buf, 512, fmt, myargs);
+  va_end(myargs);
+
+  onion_response *res = queue[i].res;
+  onion_websocket *ws = queue[i].ws;
+
+  // TODO: use onion_*_write here?
+  if (res) return onion_response_printf(res, "%s", buf);
+  if (ws)  return onion_websocket_printf(ws, "%s", buf);
+  return 0;
+}
 
 
 void traverse(int qi) {
@@ -155,6 +173,9 @@ void traverse(int qi) {
       if (n>=outend) break;
     }
   resultFlush(qi);
+
+  // send the (exact) size of the complete result set
+  resultPrintf(qi, "OUTOF %d\n", fnum[0]); 
 }
 
 void notin(int qi) {
@@ -240,7 +261,13 @@ void intersect(int qi) {
   onion_response *res = queue[qi].res;
   onion_websocket *ws = queue[qi].ws;
 
-  // decide on an intersection strategy
+  // was one of the results empty?
+  if (fnum[0]==0 || fnum[1]==0) {
+    resultPrintf(qi, "OUTOF %d\n", 0); 
+    return;
+  }
+
+  // otherwise decide on an intersection strategy
   if (fnum[0]>1000000 || fnum[1]>1000000) {
     fprintf(stderr,"using bsearch strategy.\n");
     // sort the smaller and bsearch on it
@@ -277,6 +304,11 @@ void intersect(int qi) {
         } while(j0<j1);
       }
     }
+
+    resultFlush(qi);
+
+    // send the (estimated) size of the complete result set
+    resultPrintf(qi, "OUTOF %d\n", 0); 
   } else {
     // sort both and intersect then
     fprintf(stderr,"using sort strategy.\n");
@@ -306,9 +338,15 @@ void intersect(int qi) {
         i1++;
       }
     } while (i0 < fnum[0] && i1<fnum[1]);
-  }
 
-  resultFlush(qi);
+    resultFlush(qi);
+
+    // send the (estimated) size of the complete result set
+    int s = n-outstart;
+    int est1 = s + int( double(s)/double(i0+1) * double(fnum[0]+1) );
+    int est2 = s + int( double(s)/double(i1+1) * double(fnum[1]+1) );
+    resultPrintf(qi, "OUTOF %d\n", est1<est2?est1:est2); 
+  }
 }
 
 onion_connection_status handleStatus(void *d, onion_request *req, onion_response *res)
