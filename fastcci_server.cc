@@ -280,8 +280,8 @@ void intersect(int qi) {
     qsort(fbuf[small], fnum[small], sizeof(int), compare);
 
     queue[qi].status = WS_STREAMING;
-    int *j0, *j1, r, *j, *end=&(fbuf[small][fnum[small]+1]);
-    for (int i=0; i<fnum[large]; ++i) {
+    int i, *j0, *j1, r, *j, *end=&(fbuf[small][fnum[small]+1]);
+    for (i=0; i<fnum[large]; ++i) {
       j = (int*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof(int), compare);
       if (j) {
         // are we at the output offset?
@@ -308,7 +308,8 @@ void intersect(int qi) {
     resultFlush(qi);
 
     // send the (estimated) size of the complete result set
-    resultPrintf(qi, "OUTOF %d\n", 0); 
+    int est = n + int( double(n)/double(i+1) * double(fnum[large]+1) );
+    resultPrintf(qi, "OUTOF %d\n", est); 
   } else {
     // sort both and intersect then
     fprintf(stderr,"using sort strategy.\n");
@@ -343,8 +344,8 @@ void intersect(int qi) {
 
     // send the (estimated) size of the complete result set
     int s = n-outstart;
-    int est1 = s + int( double(s)/double(i0+1) * double(fnum[0]+1) );
-    int est2 = s + int( double(s)/double(i1+1) * double(fnum[1]+1) );
+    int est1 = n + int( double(n)/double(i0+1) * double(fnum[0]+1) );
+    int est2 = n + int( double(n)/double(i1+1) * double(fnum[1]+1) );
     resultPrintf(qi, "OUTOF %d\n", est1<est2?est1:est2); 
   }
 }
