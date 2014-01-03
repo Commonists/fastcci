@@ -478,6 +478,10 @@ int queueRequest(onion_request *req)
     }
   }
 
+  // check if invalid ids were specified
+  if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || 
+      queue[i].c1<0 || queue[i].c2<0) return -1;
+
   return i;
 }
 
