@@ -30,10 +30,20 @@ char *mask;
 enum wiConn { WC_XHR, WC_SOCKET };
 
 // work item type
-enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN };
+enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN, WT_PATH };
 
 // work item status type
 enum wiStatus { WS_WAITING, WS_PREPROCESS, WS_COMPUTING, WS_STREAMING, WS_DONE };
+
+// check if an ID is a valid category
+inline bool isCategory(int i) {
+  return (i<maxcat && cat[i]>=0);
+}
+
+// check if an ID is a valid file
+inline bool isFile(int i) {
+  return (i<maxcat && cat[i]<0);
+}
 
 // work item queue
 int aItem = 0, bItem = 0;
@@ -67,38 +77,6 @@ int readFile(const char *fname, int* &buf) {
   buf = (int*)malloc(sz);
   fread(buf, 1, sz, in);
   return sz;
-}
-
-void fetchFiles(int id, int depth) {
-  // record path
-  if (depth==maxdepth) return;
-
-  // previously visited category
-  int i;
-  if (mask[id] != 0) return;
-
-  // mark as visited
-  mask[id]=1;
-  int c = cat[id], cend = tree[c], cfile = tree[c+1];
-  c += 2;
-  while (c<cend) {
-    fetchFiles(tree[c], depth+1);
-    c++; 
-  }
-
-  // copy files
-  int len = cfile-c;
-  if (fnum[resbuf]+len > fmax[resbuf]) {
-    // grow buffer
-    while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
-    fbuf[resbuf] = (int*)realloc(fbuf[resbuf], fmax[resbuf]*sizeof(int));
-  }
-  memcpy(&(fbuf[resbuf][fnum[resbuf]]), &(tree[c]), sizeof(int)*len);
-  fnum[resbuf] += len;
-}
-
-int compare (const void * a, const void * b) {
-  return ( *(int*)a - *(int*)b );
 }
 
 // buffering of up to 50 search results (the amount we can safely API query)
@@ -144,6 +122,78 @@ ssize_t resultPrintf(int i, const char *fmt, ...) {
   if (res) return onion_response_printf(res, "%s", buf);
   if (ws)  return onion_websocket_printf(ws, "%s", buf);
   return 0;
+}
+
+void fetchFiles(int id, int depth) {
+  // record path
+  if (depth==maxdepth) return;
+
+  // previously visited category
+  int i;
+  if (mask[id] != 0) return;
+
+  // mark as visited
+  mask[id]=1;
+  int c = cat[id], cend = tree[c], cfile = tree[c+1];
+  c += 2;
+  while (c<cend) {
+    fetchFiles(tree[c], depth+1);
+    c++; 
+  }
+
+  // copy files
+  int len = cfile-c;
+  if (fnum[resbuf]+len > fmax[resbuf]) {
+    // grow buffer
+    while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
+    fbuf[resbuf] = (int*)realloc(fbuf[resbuf], fmax[resbuf]*sizeof(int));
+  }
+  memcpy(&(fbuf[resbuf][fnum[resbuf]]), &(tree[c]), sizeof(int)*len);
+  fnum[resbuf] += len;
+}
+
+// recursively tag categories to find a path between Category -> File  or  Category -> Category
+int history[maxdepth];
+bool found;
+void tagCat(int id, int qi, int depth) {
+  // record path
+  if (depth==maxdepth || mask[id]!=0 || found) return;
+  history[depth] = id;
+
+  int c = cat[id], cend = tree[c], cend2 = tree[c+1];
+  bool foundPath = false;
+  if (id==queue[qi].c2) foundPath=true;
+  // check if c2 is a file (cat[c2]<0)
+  else if (cat[queue[qi].c2]<0) {
+    // if so, search the files in this cat
+    for (int i=cend; i<cend2; ++i) {
+      if (tree[i]==queue[qi].c2) {
+        foundPath=true;
+        break;
+      }
+    }
+  }
+
+  // found the target category
+  if (foundPath) {
+    for (int i=0; i<=depth; ++i)
+      resultQueue(qi, history[i]);
+    resultFlush(qi);
+    found = true;
+    return;
+  }
+
+  // mark as visited
+  mask[id]=1;
+  c += 2;
+  while (c<cend) {
+    tagCat(tree[c], qi, depth+1);
+    c++; 
+  }
+}
+
+int compare (const void * a, const void * b) {
+  return ( *(int*)a - *(int*)b );
 }
 
 
@@ -419,8 +469,12 @@ int queueRequest(onion_request *req)
         queue[i].type = WT_NOTIN;
       else if (strcmp(aparam,"list")==0)
         queue[i].type = WT_TRAVERSE;
+      else if (strcmp(aparam,"path")==0) {
+        queue[i].type = WT_PATH;
+        if (queue[i].c1==queue[i].c2) return -1;
+      }
       else
-        return OCS_INTERNAL_ERROR;
+        return -1;
     }
   }
 
@@ -552,37 +606,44 @@ void *computeThread( void *d ) {
       // signal start of compute
       if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START\n");  
 
-      fnum[0] = 0;
-      fnum[1] = 0;
-      queue[i].status = WS_PREPROCESS;
-
-      // generate intermediate results
-      int cid[2] = {queue[i].c1, queue[i].c2};
-      for (int i=0; i<((cid[0]!=cid[1])?2:1); ++i) {
-        // clear visitation mask
+      if (queue[i].type==WT_PATH) {
+        // path finding
+        found = false;
         memset(mask,0,maxcat);
-        
-        // fetch files through deep traversal
-        resbuf=i;
-        fetchFiles(cid[i],0);
-        fprintf(stderr,"fnum(%d) %d\n", cid[i], fnum[i]);
+        tagCat(queue[i].c1, i, 0);
+      } else {
+        // boolean operations (AND, LIST, NOTIN)
+        fnum[0] = 0;
+        fnum[1] = 0;
+        queue[i].status = WS_PREPROCESS;
+
+        // generate intermediate results
+        int cid[2] = {queue[i].c1, queue[i].c2};
+        for (int j=0; j<((cid[0]!=cid[1])?2:1); ++i) {
+          // clear visitation mask
+          memset(mask,0,maxcat);
+          
+          // fetch files through deep traversal
+          resbuf=j;
+          fetchFiles(cid[j],0);
+          fprintf(stderr,"fnum(%d) %d\n", cid[j], fnum[j]);
+        }
+
+        // compute result
+        queue[i].status = WS_COMPUTING;
+
+        switch (queue[i].type) {
+          case WT_TRAVERSE :
+            traverse(i);
+            break;
+          case WT_NOTIN :
+            notin(i);
+            break;
+          case WT_INTERSECT :
+            intersect(i);
+            break;
+        }
       }
-
-      // compute result
-      queue[i].status = WS_COMPUTING;
-
-      switch (queue[i].type) {
-        case WT_TRAVERSE :
-          traverse(i);
-          break;
-        case WT_NOTIN :
-          notin(i);
-          break;
-        case WT_INTERSECT :
-          intersect(i);
-          break;
-      }
-
 
       queue[i].status = WS_DONE;
 
