@@ -624,7 +624,7 @@ void *computeThread( void *d ) {
 
         // generate intermediate results
         int cid[2] = {queue[i].c1, queue[i].c2};
-        for (int j=0; j<((cid[0]!=cid[1])?2:1); ++i) {
+        for (int j=0; j<((cid[0]!=cid[1])?2:1); ++j) {
           // clear visitation mask
           memset(mask,0,maxcat);
           
