@@ -611,6 +611,7 @@ void *computeThread( void *d ) {
         found = false;
         memset(mask,0,maxcat);
         tagCat(queue[i].c1, i, 0);
+        if (!found) resultPrintf(i, "NOPATH\n"); 
       } else {
         // boolean operations (AND, LIST, NOTIN)
         fnum[0] = 0;
