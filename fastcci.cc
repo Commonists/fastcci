@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
 
       if (type[0]=='s') {
         if (expect!=0) {
-          fprintf(stderr, "Did not expect a subcategory at this point!\n");
+          fprintf(stderr, "Did not expect a subcategory at this point!\n%s\n",buf);
           exit(1);
         }
         if (csubcat>=maxtree) growTree();
