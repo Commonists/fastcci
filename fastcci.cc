@@ -8,71 +8,102 @@ int compare (const void * a, const void * b) {
   return ( *(int*)a - *(int*)b );
 }
 
+int maxtree = 150000000, maxcat = 40000000;
+int *tree = NULL, *cat = NULL;
+
+void growTree(int max=0) {
+  if (tree==NULL) 
+    tree = (int*)malloc(maxtree * sizeof *tree);
+  else {
+    maxtree += 10000000;
+    if (maxtree<=max) maxtree = max+1;
+    tree = (int*)realloc(tree, maxtree * sizeof *tree);
+  }
+}
+
+void growCat(int max=0) {
+  int a;
+  if (cat==NULL) {
+    cat = (int*)malloc(maxcat * sizeof *cat);
+    a = 0;
+  } else {
+    a = maxcat;
+    maxcat += 1000000;
+    if (maxcat<=max) maxcat = max+1;
+    cat = (int*)realloc(cat, maxcat * sizeof *cat);
+  }
+
+  // initialize al cat entries to -1 (unused pageids are files)
+  for (int i=a; i<maxcat; ++i) cat[i] = -1;
+}
+
+
 int main(int argc, char *argv[]) {
-	int i;
-	if (argc!=2) exit(1);
+  int i;
 
-	// circular category detection
-	int maxcat = atoi(argv[1])+1;
-	int *cat = (int*)malloc(sizeof(int)*maxcat);
-	for (i=0; i<maxcat; ++i)
-		cat[i] = -1;
+  // category index
+  growCat();
 
-	// category tree buffer
-	const int maxtree = 150000000;
-	int *tree = (int*)malloc(sizeof(int)*maxtree);
-	int cstart=0, cfile=0, csubcat=0;
+  // category tree buffer
+  growTree();
+  int cstart=0, cfile=0, csubcat=0;
 
-	// read data dump line by line
-	char buf[200], type[10];
-	int cl_from, cl_to, lcl_to=-1;
-	while(!feof(stdin)) {
-		if (fgets(buf, 200, stdin)) {
-			sscanf(buf,"%d %d %s", &cl_from, &cl_to, type);
+  // read data dump line by line
+  char buf[200], type[10];
+  int cl_from, cl_to, lcl_to=-1;
+  while(!feof(stdin)) {
+    if (fgets(buf, 200, stdin)) {
+      sscanf(buf,"%d %d %s", &cl_from, &cl_to, type);
 
-			// new category?
-			if (cl_to != lcl_to) {
-				if (lcl_to>0) {
-					cat[lcl_to] = cstart;
-					tree[cstart]   = csubcat;
-					tree[cstart+1] = cfile;
-                    // pre-sort the file list
-                    qsort(&(tree[csubcat]),cfile-csubcat,sizeof(int),compare);
-				}
-				cstart = csubcat = cfile;
-				csubcat += 2;
-				cfile   += 2;
-			}
-			lcl_to = cl_to;
+      // new category?
+      if (cl_to != lcl_to) {
+        if (lcl_to>0) {
+          // make sure we have enough memory for the index
+          if (lcl_to>=maxcat) growCat(lcl_to);
 
-			if (type[0]=='s') {
-				tree[csubcat++] = cl_from;
-				cfile++;
-			} else if (type[0]=='f') {
-				tree[cfile++] = cl_from;
-			}
+          // write category index and category header
+          cat[lcl_to] = cstart;
+          tree[cstart]   = csubcat;
+          tree[cstart+1] = cfile;
 
-			if (cfile==maxtree) {
-				printf("Tree buffer too small\n");
-				exit(1);
-			}
-		}
-	}
-	cat[lcl_to] = cstart;
-	tree[cstart]   = csubcat;
-	tree[cstart+1] = cfile;
-    // pre-sort the file list
-    qsort(&(tree[csubcat]),cfile-csubcat,sizeof(int),compare);
+          // pre-sort the file list
+          qsort(&(tree[csubcat]),cfile-csubcat,sizeof *tree,compare);
+        }
+        cstart = csubcat = cfile;
+        csubcat += 2;
+        cfile   += 2;
+      }
+      lcl_to = cl_to;
 
-	// write out binary tree files
-	FILE *outtree = fopen("../fastcci.tree","wb");
-	FILE *outcat  = fopen("../fastcci.cat","wb");
+      if (type[0]=='s') {
+        if (csubcat>=maxtree) growTree();
 
-	fwrite(tree, sizeof(int), cfile,  outtree);
-	fwrite(cat,  sizeof(int), maxcat, outcat);
+        tree[csubcat++] = cl_from;
+        cfile++;
+      } else if (type[0]=='f') {
+        if (cfile>=maxtree) growTree();
+        tree[cfile++] = cl_from;
+      }
+    }
+  }
+  cat[lcl_to] = cstart;
+  tree[cstart]   = csubcat;
+  tree[cstart+1] = cfile;
 
-	fclose(outtree);
-	fclose(outcat);
+  // pre-sort the file list
+  qsort(&(tree[csubcat]),cfile-csubcat,sizeof(int),compare);
 
-	return 0;
+  // write out binary tree files
+  FILE *outtree = fopen("../fastcci.tree","wb");
+  FILE *outcat  = fopen("../fastcci.cat","wb");
+
+  fwrite(tree, sizeof *tree, cfile,    outtree);
+  fwrite(cat,  sizeof *cat,  lcl_to+1, outcat);
+
+  fclose(outtree);
+  fclose(outcat);
+
+  free(tree);
+  free(cat);
+  return 0;
 }
