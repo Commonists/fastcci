@@ -71,11 +71,11 @@ int main(int argc, char *argv[]) {
           qsort(&(tree[csubcat]),cfile-csubcat,sizeof *tree,compare);
 
           // expect a subcategory or a file
-          expect = 0;
         }
         cstart = csubcat = cfile;
         csubcat += 2;
         cfile   += 2;
+        expect = 0;
       }
 
       if (type[0]=='s') {
