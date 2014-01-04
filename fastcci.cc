@@ -51,6 +51,7 @@ int main(int argc, char *argv[]) {
   // read data dump line by line
   char buf[200], type[10];
   int cl_from, cl_to, lcl_to=-1;
+  int expect; // 0:sf, 1:f
   while(!feof(stdin)) {
     if (fgets(buf, 200, stdin)) {
       sscanf(buf,"%d %d %s", &cl_from, &cl_to, type);
@@ -68,22 +69,30 @@ int main(int argc, char *argv[]) {
 
           // pre-sort the file list
           qsort(&(tree[csubcat]),cfile-csubcat,sizeof *tree,compare);
+
+          // expect a subcategory or a file
+          expect = 0;
         }
         cstart = csubcat = cfile;
         csubcat += 2;
         cfile   += 2;
       }
-      lcl_to = cl_to;
 
       if (type[0]=='s') {
+        if (expect!=0) {
+          fprintf(stderr, "Did not expect a subcategory at this point!\n");
+          exit(1);
+        }
         if (csubcat>=maxtree) growTree();
-
         tree[csubcat++] = cl_from;
         cfile++;
       } else if (type[0]=='f') {
         if (cfile>=maxtree) growTree();
         tree[cfile++] = cl_from;
+        expect = 1;
       }
+
+      lcl_to = cl_to;
     }
   }
   cat[lcl_to] = cstart;
