@@ -10,7 +10,9 @@
 #include <sys/types.h>
 
 typedef int32_t tree_type; 
-typedef int32_t result_type; // will be int64_t
+typedef int64_t result_type;
+const result_type depth_mask = 0xFFFFFFFF;
+const int depth_shift = 32;
 
 #include <onion/onion.h>
 #include <onion/handler.h>
@@ -27,8 +29,8 @@ const int maxdepth=500;
 int resbuf;
 int fmax[2]={100000,100000}, fnum[2];
 result_type *fbuf[2] = {0};
-int *cat, maxcat; 
-tree_type *tree; 
+int maxcat; 
+tree_type *cat, *tree; 
 char *mask;
 
 // work item type
@@ -74,12 +76,12 @@ struct workItem {
   int t0; // queuing timestamp
 } queue[maxItem];
 
-int readFile(const char *fname, int* &buf) {
+int readFile(const char *fname, tree_type* &buf) {
   FILE *in = fopen(fname,"rb");
   fseek(in, 0L, SEEK_END);
   int sz = ftell(in);
   fseek(in, 0L, SEEK_SET);
-  buf = (int*)malloc(sz);
+  buf = (tree_type*)malloc(sz);
   fread(buf, 1, sz, in);
   return sz;
 }
@@ -134,7 +136,6 @@ void fetchFiles(int id, int depth) {
   if (depth==maxdepth) return;
 
   // previously visited category
-  int i;
   if (mask[id] != 0) return;
 
   // mark as visited
@@ -151,10 +152,18 @@ void fetchFiles(int id, int depth) {
   if (fnum[resbuf]+len > fmax[resbuf]) {
     // grow buffer
     while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
-    fbuf[resbuf] = (int*)realloc(fbuf[resbuf], fmax[resbuf]*sizeof(int));
+    fbuf[resbuf] = (result_type*)realloc(fbuf[resbuf], fmax[resbuf] * sizeof **fbuf);
   }
-  memcpy(&(fbuf[resbuf][fnum[resbuf]]), &(tree[c]), sizeof(int)*len);
+  
+  // copy everything
+  // memcpy(&(fbuf[resbuf][fnum[resbuf]]), &(tree[c]), sizeof(int)*len * size);
+
+  // copy and add the depth on top
   fnum[resbuf] += len;
+  result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), dshift = result_type(depth) << depth_shift;
+  tree_type   *src = &(tree[c]);
+  //for (i=0; i<len) dst[i] = src[i] + dshift;
+  while (len--) *dst++ = *src++ | dshift;
 }
 
 // recursively tag categories to find a path between Category -> File  or  Category -> Category
@@ -198,7 +207,7 @@ void tagCat(int id, int qi, int depth) {
 }
 
 int compare (const void * a, const void * b) {
-  return ( *(int*)a - *(int*)b );
+  return ( *(tree_type*)a - *(tree_type*)b );
 }
 
 
@@ -211,7 +220,7 @@ void traverse(int qi) {
   onion_websocket *ws = queue[qi].ws;
 
   // sort
-  qsort(fbuf[0], fnum[0], sizeof(int), compare);
+  qsort(fbuf[0], fnum[0], sizeof **fbuf, compare);
 
   // output unique files
   queue[qi].status = WS_STREAMING;
@@ -244,8 +253,8 @@ void notin(int qi) {
 
   // sort both and subtract then
   fprintf(stderr,"using sort strategy.\n");
-  qsort(fbuf[0], fnum[0], sizeof(int), compare);
-  qsort(fbuf[1], fnum[1], sizeof(int), compare);
+  qsort(fbuf[0], fnum[0], sizeof **fbuf, compare);
+  qsort(fbuf[1], fnum[1], sizeof **fbuf, compare);
 /*
   1 2
   3 3
@@ -332,30 +341,34 @@ void intersect(int qi) {
     } else {
       small=1; large=0; 
     }
-    qsort(fbuf[small], fnum[small], sizeof(int), compare);
+    qsort(fbuf[small], fnum[small], sizeof **fbuf, compare);
 
     queue[qi].status = WS_STREAMING;
-    int i, *j0, *j1, r, *j, *end=&(fbuf[small][fnum[small]+1]);
+    int i;
+    tree_type r;
+    result_type *j0, *j1, *j, *end=&(fbuf[small][fnum[small]+1]);
     for (i=0; i<fnum[large]; ++i) {
-      j = (int*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof(int), compare);
+      j = (result_type*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof **fbuf, compare);
       if (j) {
         // are we at the output offset?
         if (n>=outstart) resultQueue(qi, fbuf[large][i]);
         n++;
         if (n>=outend) break;
 
-        // remove this match from the small result set
-        j0=j; while(j0>fbuf[small] && *j==*j0) j0--; 
-        j1=j; while(j1<end && *j==*j1) j1++;
+        // remove this match from the small result set (cast result_type* to tree_type* before dereferencing to only compare the first 32bit)
+        // TODO find minimum depth value
+        j0=j; while(j0>fbuf[small] && *(tree_type*)j==*(tree_type*)j0) j0--; 
+        j1=j; while(j1<end && *(tree_type*)j==*(tree_type*)j1) j1++;
 
         // fill in from the entry before or after (if this was the last entry break out of the loop)
-        if (j1<end) r=*j1;
-        else if (j0>fbuf[small]) r=*j0;
+        if (j1<end) r = *(tree_type*)j1;
+        else if (j0>fbuf[small]) r = *(tree_type*)j0;
         else break;
 
         j1--;
+        result_type rr = (result_type)r | (depth_mask << depth_shift);
         do {
-          *(++j0)=r;
+          *(++j0) = rr; // also set the depth field to max
         } while(j0<j1);
       }
     }
@@ -368,8 +381,8 @@ void intersect(int qi) {
   } else {
     // sort both and intersect then
     fprintf(stderr,"using sort strategy.\n");
-    qsort(fbuf[0], fnum[0], sizeof(int), compare);
-    qsort(fbuf[1], fnum[1], sizeof(int), compare);
+    qsort(fbuf[0], fnum[0], sizeof **fbuf, compare);
+    qsort(fbuf[1], fnum[1], sizeof **fbuf, compare);
 
     // perform intersection
     queue[qi].status = WS_STREAMING;
@@ -673,14 +686,14 @@ void *computeThread( void *d ) {
 int main(int argc, char *argv[]) {
 
   maxcat = readFile("../fastcci.cat", cat);
-  maxcat /= sizeof(int);
+  maxcat /= sizeof(tree_type);
   mask = (char*)malloc(maxcat);
 
   readFile("../fastcci.tree", tree);
 
   // intermediate return buffers
-  fbuf[0]=(int*)malloc(fmax[0]*sizeof(int));
-  fbuf[1]=(int*)malloc(fmax[1]*sizeof(int));
+  fbuf[0]=(result_type*)malloc(fmax[0] * sizeof **fbuf);
+  fbuf[1]=(result_type*)malloc(fmax[1] * sizeof **fbuf);
 
   if (argc != 2) {
     printf("%s PORT\n", argv[0]);
