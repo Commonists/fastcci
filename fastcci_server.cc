@@ -7,6 +7,10 @@
 #endif
 #include <string.h>
 #include <pthread.h>
+#include <sys/types.h>
+
+typedef int32_t tree_type; 
+typedef int32_t result_type; // will be int64_t
 
 #include <onion/onion.h>
 #include <onion/handler.h>
@@ -21,9 +25,10 @@ pthread_cond_t condition;
 // category data and traversal information
 const int maxdepth=500;
 int resbuf;
-int *fbuf[2] = {0}, fmax[2]={100000,100000}, fnum[2];
+int fmax[2]={100000,100000}, fnum[2];
+result_type *fbuf[2] = {0};
 int *cat, maxcat; 
-int *tree; 
+tree_type *tree; 
 char *mask;
 
 // work item type
