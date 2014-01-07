@@ -262,8 +262,9 @@ void tagCat(int id, int qi, int depth) {
   }
 }
 
+// results in descending order
 int compare (const void * a, const void * b) {
-  return ( *(tree_type*)a - *(tree_type*)b );
+  return ( *(tree_type*)b - *(tree_type*)a );
 }
 
 
@@ -332,7 +333,7 @@ void notin(int qi) {
   queue[qi].status = WS_STREAMING;
   do {
     //if (fbuf[0][i0] < fbuf[1][i1]) {
-    if ( *(tree_type*)j0 < *(tree_type*)j1 ) {
+    if ( *(tree_type*)j0 > *(tree_type*)j1 ) {
       r = *(tree_type*)j0; // = fbuf[0][i0] & cat_mask;
       
       if (r!=lr) {
@@ -347,7 +348,7 @@ void notin(int qi) {
 
       // advance i0 until we are at a different entry
       for(; j0<f0 && *(tree_type*)j0==r; j0++);
-    } else if (*(tree_type*)j0 > *(tree_type*)j1) { //    fbuf[0][i0] > fbuf[1][i1]) { 
+    } else if (*(tree_type*)j0 < *(tree_type*)j1) { //    fbuf[0][i0] > fbuf[1][i1]) { 
       r = *(tree_type*)j1; // = fbuf[1][i1] & cat_mask;
 
       // advance i1 until we are at a different entry
@@ -468,9 +469,9 @@ void intersect(int qi) {
     tree_type r, lr=-1;
     result_type m0, m1;
     do {
-      if (*(tree_type*)j0 < *(tree_type*)j1) 
+      if (*(tree_type*)j0 > *(tree_type*)j1) 
         j0++;
-      else if (*(tree_type*)j0 > *(tree_type*)j1) 
+      else if (*(tree_type*)j0 < *(tree_type*)j1) 
         j1++;
       else {
         r = *(tree_type*)j0;
