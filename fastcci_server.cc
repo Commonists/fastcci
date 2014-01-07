@@ -123,7 +123,7 @@ int readFile(const char *fname, tree_type* &buf) {
 }
 
 // buffering of up to 50 search results (the amount we can safely API query)
-const int resmaxqueue = 50, resmaxbuf = 15*resmaxqueue;
+const int resmaxqueue = 50, resmaxbuf = 32*resmaxqueue;
 char rescombuf[resmaxbuf];
 int resnumqueue=0, residx=0;
 void resultFlush(int i) {
@@ -142,9 +142,9 @@ void resultFlush(int i) {
   if (ws)  onion_websocket_printf(ws, "RESULT %s\n", rescombuf);
   resnumqueue=0; residx=0;
 }
-void resultQueue(int i, int item) {
+void resultQueue(int i, result_type item) {
   // TODO check for truncation (but what then?!)
-  residx += snprintf(&(rescombuf[residx]), resmaxbuf-residx, "%d|", item);
+  residx += snprintf(&(rescombuf[residx]), resmaxbuf-residx, "%d,%d|", int(item & cat_mask), int((item & depth_mask)>>depth_shift));
 
   // queued enough values?
   if (++resnumqueue == resmaxqueue) resultFlush(i);
@@ -167,42 +167,12 @@ ssize_t resultPrintf(int i, const char *fmt, ...) {
   return 0;
 }
 
+/*
+ * Fetch all files in and below category 'id'
+ * in a breadth first search up to depth 'depth'
+ * if 'depth' id negative treat it as infinity
+ */
 void fetchFiles(int id, int depth) {
-  // record path
-  if (depth==maxdepth) return;
-
-  // previously visited category
-  if (mask[id] != 0) return;
-
-  // mark as visited
-  mask[id]=1;
-  int c = cat[id], cend = tree[c], cfile = tree[c+1];
-  c += 2;
-  while (c<cend) {
-    fetchFiles(tree[c], depth+1);
-    c++; 
-  }
-
-  // copy files
-  int len = cfile-c;
-  if (fnum[resbuf]+len > fmax[resbuf]) {
-    // grow buffer
-    while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
-    fbuf[resbuf] = (result_type*)realloc(fbuf[resbuf], fmax[resbuf] * sizeof **fbuf);
-  }
-  
-  // copy everything
-  // memcpy(&(fbuf[resbuf][fnum[resbuf]]), &(tree[c]), sizeof(int)*len * size);
-
-  // copy and add the depth on top
-  result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), dshift = result_type(depth) << depth_shift;
-  tree_type   *src = &(tree[c]);
-  fnum[resbuf] += len;
-  //for (i=0; i<len) dst[i] = src[i] + dshift;
-  while (len--) *dst++ = *src++ | dshift;
-}
-
-void fetchFiles2(int id, int depth) {
   // clear ring buffer
   rbClear(rb);
 
@@ -212,31 +182,29 @@ void fetchFiles2(int id, int depth) {
   // push root node (depth 0)
   rbPush(rb,id);
 
-  result_type r, d, i;
+  result_type r, d,e, i;
   int c, len;
   while (!rbEmpty(rb)) {
     r = rbPop(rb);
     d = r & depth_mask;
     i = r & cat_mask;
 
-    mask[id]=1;
-    int c = cat[id], cend = tree[c], cfile = tree[c+1];
+    mask[i]=1;
+    int c = cat[i], cend = tree[c], cfile = tree[c+1];
     c += 2;
 
+    // push all subcat to queue
+    e = d + (1l<<depth_shift);
+    if (d<md || depth<0) {
+      while (c<cend) rbPush(rb, tree[c++] | e);
+    }
+
     // copy and add the depth on top
+    int len = cfile-c;
     result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), dshift = result_type(depth) << depth_shift;
     tree_type   *src = &(tree[c]);
     fnum[resbuf] += len;
     while (len--) *dst++ = *src++ | d;
-
-    // push all subcat to queue
-    d += 1l<<depth_shift;
-    if (d<md) {
-      while (c<cend) {
-        rbPush(rb, tree[c++] | d);
-        c++; 
-      }
-    }
   }
 }
 
@@ -727,14 +695,15 @@ void *computeThread( void *d ) {
         queue[i].status = WS_PREPROCESS;
 
         // generate intermediate results
-        int cid[2] = {queue[i].c1, queue[i].c2};
+        int cid[2]   = {queue[i].c1, queue[i].c2};
+        int depth[2] = {queue[i].d1, queue[i].d2};
         for (int j=0; j<((cid[0]!=cid[1])?2:1); ++j) {
           // clear visitation mask
           memset(mask,0,maxcat);
           
           // fetch files through deep traversal
           resbuf=j;
-          fetchFiles(cid[j],0);
+          fetchFiles(cid[j],depth[j]);
           fprintf(stderr,"fnum(%d) %d\n", cid[j], fnum[j]);
         }
 
