@@ -677,9 +677,6 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
       }
       // don't do anything if status is WS_STREAMING, the compute task is sending data
     } while (status != WS_DONE);
-
-    onion_websocket_printf(ws, "DONE\n");
-
   }
 
   fprintf(stderr,"End of handle connection.\n");
