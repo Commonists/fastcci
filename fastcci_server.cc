@@ -64,15 +64,18 @@ inline bool rbEmpty(ringBuffer &rb) {
 }
 int rbGrow(ringBuffer &rb) {
   rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof(result_type));
-  memcpy( &(rb.buf[rb.size]), rb.buf, rb.a * sizeof *(rb.buf) );
+fprintf(stderr,"Ring buffer grow: a=%d b=%d size=%d\n", rb.a, rb.b, rb.size );
+  memcpy( &(rb.buf[rb.size]), rb.buf, (rb.b & rb.mask) * sizeof *(rb.buf) );
   rb.size *= 2;
   rb.mask = rb.size-1; 
 }
 inline void rbPush(ringBuffer &rb, result_type r) {
   if (rb.b-rb.a > rb.size) rbGrow(rb);
+  //fprintf(stderr,"Ring buffer push %d,%d   a=%d b=%d size=%d\n", r&cat_mask, (r&depth_mask) >> depth_shift, rb.a, rb.b, rb.size );
   rb.buf[(rb.b++) & rb.mask] = r;
 }
 inline result_type rbPop(ringBuffer &rb) {
+  //fprintf(stderr,"Ring buffer pop %d,%d   a=%d b=%d size=%d\n", rb.buf[rb.a & rb.mask]&cat_mask,(rb.buf[rb.a & rb.mask]&depth_mask) >> depth_shift, rb.a, rb.b, rb.size );
   return rb.buf[(rb.a++) & rb.mask];
 }
 
@@ -188,20 +191,31 @@ void fetchFiles(int id, int depth) {
     r = rbPop(rb);
     d = r & depth_mask;
     i = r & cat_mask;
-
+    
+    // tag current category as visited
     mask[i]=1;
+
     int c = cat[i], cend = tree[c], cfile = tree[c+1];
     c += 2;
 
     // push all subcat to queue
     e = d + (1l<<depth_shift);
     if (d<md || depth<0) {
-      while (c<cend) rbPush(rb, tree[c++] | e);
+      while (c<cend) {
+        // push unvisited categories into the queue
+        if (mask[tree[c]]==0) rbPush(rb, tree[c] | e);
+        c++;
+      }
     }
 
     // copy and add the depth on top
     int len = cfile-c;
-    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), dshift = result_type(depth) << depth_shift;
+    if (fnum[resbuf]+len > fmax[resbuf]) {
+      // grow buffer
+      while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
+      fbuf[resbuf] = (result_type*)realloc(fbuf[resbuf], fmax[resbuf] * sizeof **fbuf);
+    }
+    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]);
     tree_type   *src = &(tree[c]);
     fnum[resbuf] += len;
     while (len--) *dst++ = *src++ | d;
@@ -266,18 +280,20 @@ void traverse(int qi) {
 
   // output unique files
   queue[qi].status = WS_STREAMING;
-  int lr=-1;
-  for (int i=0; i<fnum[0]; ++i) 
-    if (fbuf[0][i]!=lr) {
+  result_type lr=-1, r;
+  for (int i=0; i<fnum[0]; ++i) {
+    r = fbuf[0][i] & cat_mask;
+    if (r!=lr) {
       n++;
       // are we still below the offset?
       if (n<=outstart) continue;
       // output file      
-      lr=fbuf[0][i];
-      resultQueue(qi, lr);
+      lr=r;
+      resultQueue(qi, fbuf[0][i]);
       // are we at the end of the output window?
       if (n>=outend) break;
     }
+  }
   resultFlush(qi);
 
   // send the (exact) size of the complete result set
@@ -306,15 +322,23 @@ void notin(int qi) {
 */
 
   // perform subtraction
-  int i0=0, i1=0, r, lr=-1;
+  int i0=0, i1=0;
+  tree_type r, lr;
+  result_type *j0 = fbuf[0], 
+              *j1 = fbuf[1];
+  result_type *f0 = &(fbuf[0][fnum[0]]), 
+              *f1 = &(fbuf[1][fnum[1]]);
+
   queue[qi].status = WS_STREAMING;
   do {
-    if (fbuf[0][i0] < fbuf[1][i1]) {
-      r = fbuf[0][i0];
+    //if (fbuf[0][i0] < fbuf[1][i1]) {
+    if ( *(tree_type*)j0 < *(tree_type*)j1 ) {
+      r = *(tree_type*)j0; // = fbuf[0][i0] & cat_mask;
       
       if (r!=lr) {
         // are we at the output offset?
-        if (n>=outstart) resultQueue(qi, r);
+        //if (n>=outstart) resultQueue(qi, fbuf[0][i0]);
+        if (n>=outstart) resultQueue(qi, *j0);
         n++;
         if (n>=outend) break;
       }
@@ -322,31 +346,32 @@ void notin(int qi) {
       lr = r;
 
       // advance i0 until we are at a different entry
-      for(; i0<fnum[0] && fbuf[0][i0]==r; i0++);
-    } else if (fbuf[0][i0] > fbuf[1][i1]) { 
-      r = fbuf[1][i1];
+      for(; j0<f0 && *(tree_type*)j0==r; j0++);
+    } else if (*(tree_type*)j0 > *(tree_type*)j1) { //    fbuf[0][i0] > fbuf[1][i1]) { 
+      r = *(tree_type*)j1; // = fbuf[1][i1] & cat_mask;
 
       // advance i1 until we are at a different entry
-      for(; i1<fnum[1] && fbuf[1][i1]==r; i1++);
+      //for(; i1<fnum[1] && (fbuf[1][i1] & cat_mask)==r; i1++);
+      for(; j1<f1 && *(tree_type*)j1==r; j1++);
     } else { // equal
       // advance i0 until we are at a different entry
-      r = fbuf[0][i0];
-      for(; i0<fnum[0] && fbuf[0][i0]==r; i0++);
+      r = *(tree_type*)j0;
+      for(; j0<f0 && *(tree_type*)j0==r; j0++);
 
       // advance i1 until we are at a different entry
-      r = fbuf[1][i1];
-      for(; i1<fnum[1] && fbuf[1][i1]==r; i1++);
+      r = *(tree_type*)j1;
+      for(; j1<f1 && *(tree_type*)j1==r; j1++);
     }
-  } while (i0 < fnum[0] && i1<fnum[1]);
+  } while (j0<f0 && j1<f1);
 
   // dump the remainder of c1
-  if (i0 < fnum[0] && i1>=fnum[1]) {
-    for (;i0 < fnum[0]; ++i0) {
-      r = fbuf[0][i0];
+  if (j0<f0 && j1>=f1) {
+    for (;j0<f0; ++j0) {
+      r = *(tree_type*)j0;
       
       if (r!=lr) {
         // are we at the output offset?
-        if (n>=outstart) resultQueue(qi, r);
+        if (n>=outstart) resultQueue(qi, *j0);
         n++;
         if (n>=outend) break;
       }
