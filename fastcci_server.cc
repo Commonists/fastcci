@@ -13,6 +13,7 @@ typedef int32_t tree_type;
 typedef int64_t result_type;
 const int depth_shift = 32;
 const result_type depth_mask = result_type(0x7FFFFFFF) << depth_shift;
+const result_type cat_mask   = 0x7FFFFFFF;
 
 #include <onion/onion.h>
 #include <onion/handler.h>
@@ -42,6 +43,40 @@ enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN, WT_PATH };
 // work item status type
 enum wiStatus { WS_WAITING, WS_PREPROCESS, WS_COMPUTING, WS_STREAMING, WS_DONE };
 
+
+// breadth first search ringbuffer
+struct ringBuffer {
+  int size, mask, a, b;
+  result_type *buf;
+} rb;
+
+int rbInit(ringBuffer &rb) {
+  rb.size = 1024;
+  rb.mask = rb.size-1;
+  rb.buf = (result_type*)malloc(rb.size * sizeof(result_type));
+}
+int rbClear(ringBuffer &rb) {
+  rb.a = 0;
+  rb.b = 0;
+}
+inline bool rbEmpty(ringBuffer &rb) {
+  return rb.a == rb.b;
+}
+int rbGrow(ringBuffer &rb) {
+  rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof(result_type));
+  memcpy( &(rb.buf[rb.size]), rb.buf, rb.a * sizeof *(rb.buf) );
+  rb.size *= 2;
+  rb.mask = rb.size-1; 
+}
+inline void rbPush(ringBuffer &rb, result_type r) {
+  if (rb.b-rb.a > rb.size) rbGrow(rb);
+  rb.buf[(rb.b++) & rb.mask] = r;
+}
+inline result_type rbPop(ringBuffer &rb) {
+  return rb.buf[(rb.a++) & rb.mask];
+}
+
+
 // check if an ID is a valid category
 inline bool isCategory(int i) {
   return (i<maxcat && cat[i]>=0);
@@ -52,7 +87,8 @@ inline bool isFile(int i) {
   return (i<maxcat && cat[i]<0);
 }
 
-// work item queue
+
+// work item queue 
 int aItem = 0, bItem = 0;
 const int maxItem = 1000;
 struct workItem {
@@ -159,11 +195,49 @@ void fetchFiles(int id, int depth) {
   // memcpy(&(fbuf[resbuf][fnum[resbuf]]), &(tree[c]), sizeof(int)*len * size);
 
   // copy and add the depth on top
-  fnum[resbuf] += len;
   result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), dshift = result_type(depth) << depth_shift;
   tree_type   *src = &(tree[c]);
+  fnum[resbuf] += len;
   //for (i=0; i<len) dst[i] = src[i] + dshift;
   while (len--) *dst++ = *src++ | dshift;
+}
+
+void fetchFiles2(int id, int depth) {
+  // clear ring buffer
+  rbClear(rb);
+
+  // compute max depth
+  result_type md = result_type(depth) << depth_shift;
+
+  // push root node (depth 0)
+  rbPush(rb,id);
+
+  result_type r, d, i;
+  int c, len;
+  while (!rbEmpty(rb)) {
+    r = rbPop(rb);
+    d = r & depth_mask;
+    i = r & cat_mask;
+
+    mask[id]=1;
+    int c = cat[id], cend = tree[c], cfile = tree[c+1];
+    c += 2;
+
+    // copy and add the depth on top
+    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), dshift = result_type(depth) << depth_shift;
+    tree_type   *src = &(tree[c]);
+    fnum[resbuf] += len;
+    while (len--) *dst++ = *src++ | d;
+
+    // push all subcat to queue
+    d += 1l<<depth_shift;
+    if (d<md) {
+      while (c<cend) {
+        rbPush(rb, tree[c++] | d);
+        c++; 
+      }
+    }
+  }
 }
 
 // recursively tag categories to find a path between Category -> File  or  Category -> Category
@@ -706,6 +780,9 @@ int main(int argc, char *argv[]) {
   // intermediate return buffers
   fbuf[0]=(result_type*)malloc(fmax[0] * sizeof **fbuf);
   fbuf[1]=(result_type*)malloc(fmax[1] * sizeof **fbuf);
+
+  // ring buffer for breadth first
+  rbInit(rb);
 
   if (argc != 2) {
     printf("%s PORT\n", argv[0]);
