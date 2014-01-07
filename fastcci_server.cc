@@ -11,8 +11,8 @@
 
 typedef int32_t tree_type; 
 typedef int64_t result_type;
-const result_type depth_mask = 0xFFFFFFFF;
 const int depth_shift = 32;
+const result_type depth_mask = result_type(0x7FFFFFFF) << depth_shift;
 
 #include <onion/onion.h>
 #include <onion/handler.h>
@@ -350,15 +350,22 @@ void intersect(int qi) {
     for (i=0; i<fnum[large]; ++i) {
       j = (result_type*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof **fbuf, compare);
       if (j) {
+        // remove this match from the small result set (cast result_type* to tree_type* before dereferencing to only compare the first 32bit)
+        // and find minimum depth value. Note: we can only take the depth of the smaller result set into account here!!
+        result_type mindepthresult = *j;
+        j0=j; while(j0>fbuf[small] && *(tree_type*)j==*(tree_type*)j0) {
+          if ((*j0 & depth_mask) < (mindepthresult & depth_mask) ) mindepthresult = *j0;
+          j0--; 
+        }
+        j1=j; while(j1<end && *(tree_type*)j==*(tree_type*)j1) {
+          if ((*j1 & depth_mask) < (mindepthresult & depth_mask) ) mindepthresult = *j1;
+          j1++;
+        }
+
         // are we at the output offset?
-        if (n>=outstart) resultQueue(qi, fbuf[large][i]);
+        if (n>=outstart) resultQueue(qi, (fbuf[large][i] & depth_mask) + mindepthresult ); // output result with mindepth plus depth in the large category TODO: do breadth first searches!!!!!
         n++;
         if (n>=outend) break;
-
-        // remove this match from the small result set (cast result_type* to tree_type* before dereferencing to only compare the first 32bit)
-        // TODO find minimum depth value
-        j0=j; while(j0>fbuf[small] && *(tree_type*)j==*(tree_type*)j0) j0--; 
-        j1=j; while(j1<end && *(tree_type*)j==*(tree_type*)j1) j1++;
 
         // fill in from the entry before or after (if this was the last entry break out of the loop)
         if (j1<end) r = *(tree_type*)j1;
@@ -366,9 +373,9 @@ void intersect(int qi) {
         else break;
 
         j1--;
-        result_type rr = (result_type)r | (depth_mask << depth_shift);
+        result_type rr = (result_type)r | depth_mask; // set the depth mask to maximum 
         do {
-          *(++j0) = rr; // also set the depth field to max
+          *(++j0) = rr; 
         } while(j0<j1);
       }
     }
@@ -387,14 +394,21 @@ void intersect(int qi) {
     // perform intersection
     queue[qi].status = WS_STREAMING;
     int i0=0, i1=0, r, lr=-1;
+    result_type *j0 = fbuf[0], *j1 = fbuf[1];
+    result_type *f0 = &(fbuf[0][fnum[0]]), *f1 = &(fbuf[1][fnum[1]]);
     do {
-      if (fbuf[0][i0] < fbuf[1][i1]) 
-        i0++;
-      else if (fbuf[0][i0] > fbuf[1][i1]) 
-        i1++;
+      if (*(tree_type*)j0 < *(tree_type*)j1) 
+        j0++;
+      else if (*(tree_type*)j0 > *(tree_type*)j1) 
+        j1++;
       else {
-        r = fbuf[0][i0];
+        r = *j0;
         
+        // advance j0 until we are at a new element (find smallest depth value)
+        // advance j1 until we are at a new element (find smallest depth value)
+        j0++;
+        j1++;
+
         if (r!=lr) {
           // are we at the output offset?
           if (n>=outstart) resultQueue(qi, r);
@@ -402,11 +416,9 @@ void intersect(int qi) {
           if (n>=outend) break;
         }
 
-        lr = r;
-        i0++;
-        i1++;
+        lr = r; // will be unneeded
       }
-    } while (i0 < fnum[0] && i1<fnum[1]);
+    } while (j0<f0 && j1<f1);
 
     resultFlush(qi);
 
