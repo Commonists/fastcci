@@ -409,6 +409,7 @@ void intersect(int qi) {
       small=1; large=0; 
     }
     qsort(fbuf[small], fnum[small], sizeof **fbuf, compare);
+    // since a breadth first search is used on the search results the low depth results come first in the large results (resulting in the correct minimal depth metric)
 
     queue[qi].status = WS_STREAMING;
     int i;
@@ -430,7 +431,7 @@ void intersect(int qi) {
         }
 
         // are we at the output offset?
-        if (n>=outstart) resultQueue(qi, (fbuf[large][i] & depth_mask) + mindepthresult ); // output result with mindepth plus depth in the large category TODO: do breadth first searches!!!!!
+        if (n>=outstart) resultQueue(qi, (fbuf[large][i] & depth_mask) + mindepthresult ); // output result with mindepth plus depth in the large category
         n++;
         if (n>=outend) break;
 
@@ -460,40 +461,48 @@ void intersect(int qi) {
 
     // perform intersection
     queue[qi].status = WS_STREAMING;
-    int i0=0, i1=0, r, lr=-1;
-    result_type *j0 = fbuf[0], *j1 = fbuf[1];
-    result_type *f0 = &(fbuf[0][fnum[0]]), *f1 = &(fbuf[1][fnum[1]]);
+    result_type *j0 = fbuf[0], 
+                *j1 = fbuf[1];
+    result_type *f0 = &(fbuf[0][fnum[0]]), 
+                *f1 = &(fbuf[1][fnum[1]]);
+    tree_type r, lr=-1;
+    result_type m0, m1;
     do {
       if (*(tree_type*)j0 < *(tree_type*)j1) 
         j0++;
       else if (*(tree_type*)j0 > *(tree_type*)j1) 
         j1++;
       else {
-        r = *j0;
-        
+        r = *(tree_type*)j0;
+        m0 = (*j0++) & depth_mask;
+        m1 = (*j1++) & depth_mask;
+ 
         // advance j0 until we are at a new element (find smallest depth value)
-        // advance j1 until we are at a new element (find smallest depth value)
-        j0++;
-        j1++;
-
-        if (r!=lr) {
-          // are we at the output offset?
-          if (n>=outstart) resultQueue(qi, r);
-          n++;
-          if (n>=outend) break;
+        while(j0<f0 && *(tree_type*)j0==r) {
+          if ((*j0 & depth_mask) < m0) m0 = *j0 & depth_mask;
+          j0++;
         }
 
-        lr = r; // will be unneeded
+        // advance j1 until we are at a new element (find smallest depth value)
+        while(j1<f1 && *(tree_type*)j1==r) {
+          if ((*j1 & depth_mask) < m1) m1 = *j1 & depth_mask;
+          j1++;
+        }
+
+        // are we at the output offset?
+        if (n>=outstart) resultQueue(qi, m0+m1+result_type(r));
+        n++;
+        if (n>=outend) break;
       }
     } while (j0<f0 && j1<f1);
 
     resultFlush(qi);
 
     // send the (estimated) size of the complete result set
-    int s = n-outstart;
+    /*int s = n-outstart;
     int est1 = n + int( double(n)/double(i0+1) * double(fnum[0]+1) );
     int est2 = n + int( double(n)/double(i1+1) * double(fnum[1]+1) );
-    resultPrintf(qi, "OUTOF %d\n", est1<est2?est1:est2); 
+    resultPrintf(qi, "OUTOF %d\n", est1<est2?est1:est2); */
   }
 }
 
