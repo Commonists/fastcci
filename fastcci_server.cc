@@ -758,6 +758,8 @@ void *computeThread( void *d ) {
         }
       }
 
+      // done with this request
+      resultPrintf(i, "DONE\n");
       queue[i].status = WS_DONE;
 
       // pop item off queue
