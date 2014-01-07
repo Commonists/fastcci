@@ -215,10 +215,16 @@ void fetchFiles(int id, int depth) {
       while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
       fbuf[resbuf] = (result_type*)realloc(fbuf[resbuf], fmax[resbuf] * sizeof **fbuf);
     }
-    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]);
+    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), *old = dst;
     tree_type   *src = &(tree[c]);
-    fnum[resbuf] += len;
-    while (len--) *dst++ = *src++ | d;
+    while (len--) {
+      r =  *src++; 
+      if (mask[r]==0) {
+        *dst++ = r | d;
+        mask[r] = 2;
+      }
+    }
+    fnum[resbuf] += dst-old;
   }
 }
 
