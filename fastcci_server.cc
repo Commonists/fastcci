@@ -63,14 +63,14 @@ inline bool rbEmpty(ringBuffer &rb) {
   return rb.a == rb.b;
 }
 int rbGrow(ringBuffer &rb) {
-  rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof(result_type));
-fprintf(stderr,"Ring buffer grow: a=%d b=%d size=%d\n", rb.a, rb.b, rb.size );
-  memcpy( &(rb.buf[rb.size]), rb.buf, (rb.b & rb.mask) * sizeof *(rb.buf) );
+  rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof *(rb.buf) );
+  fprintf(stderr,"Ring buffer grow: a=%d b=%d size=%d\n", rb.a, rb.b, rb.size );
+  memcpy( &(rb.buf[rb.size]), rb.buf, rb.size * sizeof *(rb.buf) );
   rb.size *= 2;
   rb.mask = rb.size-1; 
 }
 inline void rbPush(ringBuffer &rb, result_type r) {
-  if (rb.b-rb.a > rb.size) rbGrow(rb);
+  if (rb.b-rb.a >= rb.size) rbGrow(rb);
   //fprintf(stderr,"Ring buffer push %d,%d   a=%d b=%d size=%d\n", r&cat_mask, (r&depth_mask) >> depth_shift, rb.a, rb.b, rb.size );
   rb.buf[(rb.b++) & rb.mask] = r;
 }
