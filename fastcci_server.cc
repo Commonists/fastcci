@@ -32,7 +32,7 @@ int resbuf;
 int fmax[2]={100000,100000}, fnum[2];
 result_type *fbuf[2] = {0};
 int maxcat; 
-tree_type *cat, *tree; 
+tree_type *cat, *tree, *parent; 
 char *mask;
 
 // work item type
@@ -337,6 +337,7 @@ void tagCatNew(tree_type id, int qi, int maxDepth) {
 
   // found the target category
   if (foundPath) {
+    // TODO backtrack through the parent category buffer
     for (int i=0; i<=depth; ++i)
       resultQueue(qi, history[i]);
     resultFlush(qi);
@@ -864,7 +865,12 @@ int main(int argc, char *argv[]) {
 
   maxcat = readFile("../fastcci.cat", cat);
   maxcat /= sizeof(tree_type);
+
+  // visitation mask buffer (could be 1/8 by using a bitmask)
   mask = (char*)malloc(maxcat);
+
+  // parent category buffer for shortest path finding
+  parent = (tree_type*)malloc(maxcat * sizeof *parent);
 
   readFile("../fastcci.tree", tree);
 
