@@ -283,7 +283,7 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
 
   result_type r, d,e, ld = -1;
   int c, len;
-  while (!rbEmpty(rb) && id!=did) {
+  while (!rbEmpty(rb) && !foundPath) {
     r  = rbPop(rb);
     d  = r & depth_mask;
     id = r & cat_mask;
@@ -340,8 +340,9 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
       if (id==sid) break;
       id = parent[id];
     } 
+    int len = i;
     // output in reverse to get the forward chain
-    while (i--) resultQueue(qi, history[i] + (result_type(i)<<depth_shift));
+    while (i--) resultQueue(qi, history[i] + (result_type(len-i)<<depth_shift));
     resultFlush(qi);
   } else {
     resultPrintf(qi, "NOPATH\n"); 
