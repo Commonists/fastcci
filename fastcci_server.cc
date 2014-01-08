@@ -83,12 +83,12 @@ inline result_type rbPop(ringBuffer &rb) {
 
 // check if an ID is a valid category
 inline bool isCategory(int i) {
-  return (i<maxcat && cat[i]>=0);
+  return (i>=0 && i<maxcat && cat[i]>=0);
 }
 
 // check if an ID is a valid file
 inline bool isFile(int i) {
-  return (i<maxcat && cat[i]<0);
+  return (i>=0 && i<maxcat && cat[i]<0);
 }
 
 
@@ -676,17 +676,15 @@ int queueRequest(onion_request *req)
   if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || 
       queue[i].c1<0 || queue[i].c2<0) return -1;
 
+  // check if both c params are categories unless it is a path request
+  if (isFile(queue[i].c1) || (isFile(queue[i].c2) && queue[i].type!=WT_PATH) ) return -1;
+
+  // log request
+  if (queue[i].c1==queue[i].c2) aparam="list";
+  else if (aparam==NULL) aparam="and";
+  fprintf(stderr, "Request: a=%s c1=%d(%d) c2=%d(%d)\n", aparam, queue[i].c1, queue[i].d1, queue[i].c2, queue[i].d2);
+
   return i;
-}
-
-onion_connection_status handleRequestXHR(void *d, onion_request *req, onion_response *res)
-{
-  // try to queue the request
-  int i=queueRequest(req);
-  if (i<0) return OCS_INTERNAL_ERROR;
-
-
-  return OCS_CLOSE_CONNECTION;
 }
 
 onion_connection_status handleRequest(void *d, onion_request *req, onion_response *res)
