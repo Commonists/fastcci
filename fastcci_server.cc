@@ -268,6 +268,82 @@ void tagCat(int id, int qi, int depth) {
     c++; 
   }
 }
+// iteratively do a breadth first path search
+void tagCatNew(tree_type id, int qi, int maxDepth) {
+  // clear ring buffer
+  rbClear(rb);
+
+  // looking for path from c1 to c1?
+  tree_type tc = queue[qi].c2;
+  bool foundPath = false, c2isFile = (cat[queue[qi].c2]<0);
+  int depth = -1;
+  if (id != tc) {
+    // push root node (depth 0)
+    rbPush(rb,id);
+
+    result_type r, d,e, ld = -1, i;
+    int c, len;
+
+    while (!rbEmpty(rb) && !foundPath) {
+      r = rbPop(rb);
+      d = r & depth_mask;
+      i = r & cat_mask;
+      
+      // next layer?
+      if (d!=ld) {
+        depth++;
+        ld = d;
+      }
+
+      // tag current category as visited
+      mask[i]=1;
+
+      // head category header
+      int c = cat[i], cend = tree[c], cend2 = tree[c+1];
+      c += 2;
+
+      // push all subcat to queue
+      e = d + (1l<<depth_shift);
+      if (depth<maxDepth || maxDepth<0) {
+        while (c<cend) {
+          // inspect if we are pushing the target cat to the queue
+          if (tree[c]==tc) {
+            history[depth]=tree[c];
+            foundPath = true;
+            break;
+          }
+
+          // push unvisited categories into the queue
+          if (mask[tree[c]]==0) rbPush(rb, tree[c] | e);
+          c++;
+        }
+      }
+
+      // check if a file in the category is a match
+      if (c2isFile) {
+        for (int i=cend; i<cend2; ++i) {
+          if (tree[i]==tc) {
+            foundPath=true;
+            break;
+          }
+        }
+      }
+    }
+  } else {
+    history[0] = tc;
+    depth = 0;
+    foundPath = true;
+  }
+
+  // found the target category
+  if (foundPath) {
+    for (int i=0; i<=depth; ++i)
+      resultQueue(qi, history[i]);
+    resultFlush(qi);
+    found = true;
+    return;
+  }
+}
 
 // results in descending order
 int compare (const void * a, const void * b) {
@@ -729,6 +805,7 @@ void *computeThread( void *d ) {
         // path finding
         found = false;
         memset(mask,0,maxcat);
+        //tagCatNew(queue[i].c1, i, queue[i].d1);
         tagCat(queue[i].c1, i, 0);
         if (!found) resultPrintf(i, "NOPATH\n"); 
       } else {
