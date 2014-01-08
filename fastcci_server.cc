@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <time.h>
 #if !defined(__APPLE__)
 #include <malloc.h>
 #endif
@@ -690,8 +691,12 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 }
 
 void *notifyThread( void *d ) {
+  timespec updateInterval, t2; 
+  updateInterval.tv_sec = 0;
+  updateInterval.tv_nsec = 1000*1000*200; // 200ms
+
   while(1) {
-    sleep(1);
+    nanosleep(&updateInterval, &t2);
     
     pthread_mutex_lock(&handlerMutex);
     pthread_mutex_lock(&mutex);
