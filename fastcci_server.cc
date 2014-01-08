@@ -691,7 +691,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
 void *notifyThread( void *d ) {
   while(1) {
-    sleep(2);
+    sleep(1);
     
     pthread_mutex_lock(&handlerMutex);
     pthread_mutex_lock(&mutex);
