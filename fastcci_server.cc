@@ -72,7 +72,23 @@ ssize_t resultPrintf(int i, const char *fmt, ...) {
   onion_websocket *ws = queue[i].ws;
 
   // TODO: use onion_*_write here?
-  if (res) return onion_response_printf(res, "%s", buf);
+  if (res) {
+    // regular text response
+    if (queue[i].connection==WC_XHR) 
+      return onion_response_printf(res, "%s", buf);
+    // wrap response in a callback call (first data item)
+    if (queue[i].connection==WC_JS) {
+      return onion_response_printf(res, "fastcciCallback( ['%s',", buf);
+      queue[i].connection=WC_JS_CONT;
+    }
+    // continued transmission in JS mode (close the callbeack when the final DONE is sent)
+    if (queue[i].connection==WC_JS_CONT) {
+      if (strcmp(buf,"DONE")==0)
+        return onion_response_printf(res, "'DONE');\n");
+      else
+        return onion_response_printf(res, "'%s',", buf);
+    }
+  }
   if (ws)  return onion_websocket_printf(ws, "%s", buf);
   return 0;
 }
@@ -421,7 +437,7 @@ onion_connection_status handleStatus(void *d, onion_request *req, onion_response
   return OCS_CLOSE_CONNECTION;
 }
 
-int queueRequest(onion_request *req)
+onion_connection_status handleRequest(void *d, onion_request *req, onion_response *res)
 {
   // parse parameters
   const char* c1 = onion_request_get_query(req, "c1");
@@ -430,7 +446,7 @@ int queueRequest(onion_request *req)
   if (c1==NULL) {
     // must supply c1 parameter!
     fprintf(stderr,"No c1 parameter.\n");
-    return -1;
+    return OCS_INTERNAL_ERROR;
   }
 
   // still room on the queue?
@@ -439,12 +455,11 @@ int queueRequest(onion_request *req)
     // too many requests. reject
     fprintf(stderr,"Queue full.\n");
     pthread_mutex_unlock(&mutex);
-    return -1;
+    return OCS_INTERNAL_ERROR;
   }
-  pthread_mutex_unlock(&mutex);
-
   // new queue item
   int i = bItem % maxItem;
+  pthread_mutex_unlock(&mutex);
 
   queue[i].c1 = atoi(c1);
   queue[i].c2 = c2 ? atoi(c2) : queue[i].c1;
@@ -462,6 +477,7 @@ int queueRequest(onion_request *req)
   queue[i].s = sparam ? atoi(sparam) : 100;
 
   queue[i].status = WS_WAITING;
+  queue[i].connection = WC_NULL;
 
   const char* aparam = onion_request_get_query(req, "a");
 
@@ -479,35 +495,16 @@ int queueRequest(onion_request *req)
         queue[i].type = WT_TRAVERSE;
       else if (strcmp(aparam,"path")==0) {
         queue[i].type = WT_PATH;
-        if (queue[i].c1==queue[i].c2) return -1;
+        if (queue[i].c1==queue[i].c2) return OCS_INTERNAL_ERROR;
       }
       else
-        return -1;
+        return OCS_INTERNAL_ERROR;
     }
   }
 
   // check if invalid ids were specified
   if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || 
-      queue[i].c1<0 || queue[i].c2<0) return -1;
-
-  return i;
-}
-
-onion_connection_status handleRequestXHR(void *d, onion_request *req, onion_response *res)
-{
-  // try to queue the request
-  int i=queueRequest(req);
-  if (i<0) return OCS_INTERNAL_ERROR;
-
-
-  return OCS_CLOSE_CONNECTION;
-}
-
-onion_connection_status handleRequest(void *d, onion_request *req, onion_response *res)
-{
-  // try to queue the request
-  int i=queueRequest(req);
-  if (i<0) return OCS_INTERNAL_ERROR;
+      queue[i].c1<0 || queue[i].c2<0) return OCS_INTERNAL_ERROR;
 
   // attempt to open a websocket connection
   onion_websocket *ws = onion_websocket_new(req, res);
@@ -516,13 +513,21 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
     // HTTP connection (fallback)
     //
 
-    queue[i].connection = WC_XHR;
-    queue[i].res = res;
-    queue[i].ws  = NULL;
-
     // send keep-alive response
     onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
-    onion_response_set_header(res, "Content-Type","text/plain; charset=utf8");
+
+    // shuld we send a javascript callback for older browsers?
+    const char* tparam = onion_request_get_query(req, "t");
+    if (tparam!=NULL && strcmp(aparam,"jsonp")==0) {
+      queue[i].connection = WC_JS;
+      onion_response_set_header(res, "Content-Type","application/javascript; charset=utf8");
+    } else {
+      queue[i].connection = WC_XHR;
+      onion_response_set_header(res, "Content-Type","text/plain; charset=utf8");
+    }
+
+    queue[i].res = res;
+    queue[i].ws  = NULL;
 
     // append to the queue and signal worker thread
     pthread_mutex_lock(&mutex);
