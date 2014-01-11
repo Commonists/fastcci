@@ -11,7 +11,7 @@ int resbuf;
 int fmax[2]={100000,100000}, fnum[2];
 result_type *fbuf[2] = {0};
 int maxcat; 
-tree_type *cat, *tree; 
+tree_type *cat, *tree, *parent; 
 char *mask;
 
 // breadth first search ringbuffer
@@ -24,12 +24,12 @@ struct workItem queue[maxItem];
 
 // check if an ID is a valid category
 inline bool isCategory(int i) {
-  return (i<maxcat && cat[i]>=0);
+  return (i>=0 && i<maxcat && cat[i]>=0);
 }
 
 // check if an ID is a valid file
 inline bool isFile(int i) {
-  return (i<maxcat && cat[i]<0);
+  return (i>=0 && i<maxcat && cat[i]<0);
 }
 
 // buffering of up to 50 search results (the amount we can safely API query)
@@ -138,10 +138,16 @@ void fetchFiles(int id, int depth) {
       while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
       fbuf[resbuf] = (result_type*)realloc(fbuf[resbuf], fmax[resbuf] * sizeof **fbuf);
     }
-    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]);
+    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), *old = dst;
     tree_type   *src = &(tree[c]);
-    fnum[resbuf] += len;
-    while (len--) *dst++ = *src++ | d;
+    while (len--) {
+      r =  *src++; 
+      if (mask[r]==0) {
+        *dst++ = r | d;
+        mask[r] = 2;
+      }
+    }
+    fnum[resbuf] += dst-old;
   }
 }
 
@@ -182,6 +188,86 @@ void tagCat(int id, int qi, int depth) {
   while (c<cend) {
     tagCat(tree[c], qi, depth+1);
     c++; 
+  }
+}
+// iteratively do a breadth first path search
+void tagCatNew(tree_type sid, int qi, int maxDepth) {
+  // clear ring buffer
+  rbClear(rb);
+
+  bool foundPath = false, c2isFile = (cat[queue[qi].c2]<0);
+  int depth = -1;
+  result_type id  = sid, 
+              did = queue[qi].c2;
+
+  // push root node (depth 0)
+  rbPush(rb,sid);
+
+  result_type r, d,e, ld = -1;
+  int c, len;
+  while (!rbEmpty(rb) && !foundPath) {
+    r  = rbPop(rb);
+    d  = r & depth_mask;
+    id = r & cat_mask;
+    
+    // next layer?
+    if (d!=ld) {
+      depth++;
+      ld = d;
+    }
+
+    // head category header
+    int c = cat[id], cend = tree[c], cend2 = tree[c+1];
+    c += 2;
+
+    // push all subcat to queue
+      e = d + (1l<<depth_shift);
+    if (depth<maxDepth || maxDepth<0) {
+      while (c<cend) {
+        // inspect if we are pushing the target cat to the queue
+        if (tree[c]==did) {
+          parent[did] = id;
+          id = did;
+          foundPath = true;
+          break;
+        }
+
+        // push unvisited categories into the queue
+        if (mask[tree[c]]==0) {
+          parent[tree[c]] = id;
+          mask[tree[c]]   = 1;
+          rbPush(rb, tree[c] | e);
+        }
+        c++;
+      }
+    }
+
+    // check if a file in the category is a match
+    if (c2isFile) {
+      for (c=cend; c<cend2; ++c) {
+        if (tree[c]==did) {
+          foundPath=true;
+          break;
+        }
+      }
+    }
+  }
+
+  // found the target category
+  if (foundPath) {
+    // TODO backtrack through the parent category buffer
+    int i = 0;
+    while(true) {
+      history[i++] = id;
+      if (id==sid) break;
+      id = parent[id];
+    } 
+    int len = i;
+    // output in reverse to get the forward chain
+    while (i--) resultQueue(qi, history[i] + (result_type(len-i)<<depth_shift));
+    resultFlush(qi);
+  } else {
+    resultPrintf(qi, "NOPATH\n"); 
   }
 }
 
@@ -250,7 +336,7 @@ void notin(int qi) {
   queue[qi].status = WS_STREAMING;
   do {
     //if (fbuf[0][i0] < fbuf[1][i1]) {
-    if ( *(tree_type*)j0 < *(tree_type*)j1 ) {
+    if ( *(tree_type*)j0 > *(tree_type*)j1 ) {
       r = *(tree_type*)j0; // = fbuf[0][i0] & cat_mask;
       
       if (r!=lr) {
@@ -265,7 +351,7 @@ void notin(int qi) {
 
       // advance i0 until we are at a different entry
       for(; j0<f0 && *(tree_type*)j0==r; j0++);
-    } else if (*(tree_type*)j0 > *(tree_type*)j1) { //    fbuf[0][i0] > fbuf[1][i1]) { 
+    } else if (*(tree_type*)j0 < *(tree_type*)j1) { //    fbuf[0][i0] > fbuf[1][i1]) { 
       r = *(tree_type*)j1; // = fbuf[1][i1] & cat_mask;
 
       // advance i1 until we are at a different entry
@@ -386,9 +472,9 @@ void intersect(int qi) {
     tree_type r, lr=-1;
     result_type m0, m1;
     do {
-      if (*(tree_type*)j0 < *(tree_type*)j1) 
+      if (*(tree_type*)j0 > *(tree_type*)j1) 
         j0++;
-      else if (*(tree_type*)j0 > *(tree_type*)j1) 
+      else if (*(tree_type*)j0 < *(tree_type*)j1) 
         j1++;
       else {
         r = *(tree_type*)j0;
@@ -506,6 +592,14 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || 
       queue[i].c1<0 || queue[i].c2<0) return OCS_INTERNAL_ERROR;
 
+  // check if both c params are categories unless it is a path request
+  if (isFile(queue[i].c1) || (isFile(queue[i].c2) && queue[i].type!=WT_PATH) ) return OCS_INTERNAL_ERROR;
+
+  // log request
+  if (queue[i].c1==queue[i].c2) aparam="list";
+  else if (aparam==NULL) aparam="and";
+  fprintf(stderr, "Request: a=%s c1=%d(%d) c2=%d(%d)\n", aparam, queue[i].c1, queue[i].d1, queue[i].c2, queue[i].d2);
+
   // attempt to open a websocket connection
   onion_websocket *ws = onion_websocket_new(req, res);
   if (!ws) {
@@ -583,9 +677,6 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
       }
       // don't do anything if status is WS_STREAMING, the compute task is sending data
     } while (status != WS_DONE);
-
-    onion_websocket_printf(ws, "DONE\n");
-
   }
 
   fprintf(stderr,"End of handle connection.\n");
@@ -593,8 +684,12 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 }
 
 void *notifyThread( void *d ) {
+  timespec updateInterval, t2; 
+  updateInterval.tv_sec = 0;
+  updateInterval.tv_nsec = 1000*1000*200; // 200ms
+
   while(1) {
-    sleep(2);
+    nanosleep(&updateInterval, &t2);
     
     pthread_mutex_lock(&handlerMutex);
     pthread_mutex_lock(&mutex);
@@ -625,10 +720,9 @@ void *computeThread( void *d ) {
 
       if (queue[i].type==WT_PATH) {
         // path finding
-        found = false;
         memset(mask,0,maxcat);
-        tagCat(queue[i].c1, i, 0);
-        if (!found) resultPrintf(i, "NOPATH\n"); 
+        tagCatNew(queue[i].c1, i, queue[i].d1);
+        //tagCat(queue[i].c1, i, 0);
       } else {
         // boolean operations (AND, LIST, NOTIN)
         fnum[0] = 0;
@@ -664,6 +758,8 @@ void *computeThread( void *d ) {
         }
       }
 
+      // done with this request
+      resultPrintf(i, "DONE\n");
       queue[i].status = WS_DONE;
 
       // pop item off queue
@@ -683,7 +779,12 @@ int main(int argc, char *argv[]) {
 
   maxcat = readFile("../fastcci.cat", cat);
   maxcat /= sizeof(tree_type);
+
+  // visitation mask buffer (could be 1/8 by using a bitmask)
   mask = (char*)malloc(maxcat);
+
+  // parent category buffer for shortest path finding
+  parent = (tree_type*)malloc(maxcat * sizeof *parent);
 
   readFile("../fastcci.tree", tree);
 
