@@ -1,36 +1,28 @@
-#include <stdio.h>
-#include <stdlib.h>
-#if !defined(__APPLE__)
-#include <malloc.h>
-#endif
-
-int compare (const void * a, const void * b) {
-  return ( *(int*)a - *(int*)b );
-}
+#include "fastcci.h"
 
 int maxtree = 150000000, maxcat = 40000000;
-int *tree = NULL, *cat = NULL;
+tree_type *cat, *tree; 
 
 void growTree(int max=0) {
   if (tree==NULL) 
-    tree = (int*)malloc(maxtree * sizeof *tree);
+    tree = (tree_type*)malloc(maxtree * sizeof *tree);
   else {
     maxtree += 10000000;
     if (maxtree<=max) maxtree = max+1;
-    tree = (int*)realloc(tree, maxtree * sizeof *tree);
+    tree = (tree_type*)realloc(tree, maxtree * sizeof *tree);
   }
 }
 
 void growCat(int max=0) {
   int a;
   if (cat==NULL) {
-    cat = (int*)malloc(maxcat * sizeof *cat);
+    cat = (tree_type*)malloc(maxcat * sizeof *cat);
     a = 0;
   } else {
     a = maxcat;
     maxcat += 1000000;
     if (maxcat<=max) maxcat = max+1;
-    cat = (int*)realloc(cat, maxcat * sizeof *cat);
+    cat = (tree_type*)realloc(cat, maxcat * sizeof *cat);
   }
 
   // initialize al cat entries to -1 (unused pageids are files)
