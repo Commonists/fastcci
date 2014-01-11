@@ -38,11 +38,11 @@ char rescombuf[resmaxbuf];
 int resnumqueue=0, residx=0;
 ssize_t resultPrintf(int i, const char *fmt, ...) {
   int ret;
-  char buf[512];
+  char buf[4096]; // big enough for resmaxbuf!
   va_list myargs;
 
   va_start(myargs, fmt);
-  ret = vsnprintf(buf, 512, fmt, myargs);
+  ret = vsnprintf(buf, 4096, fmt, myargs);
   va_end(myargs);
 
   onion_response *res = queue[i].res;
