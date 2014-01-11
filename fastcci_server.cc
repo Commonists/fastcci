@@ -36,29 +36,6 @@ inline bool isFile(int i) {
 const int resmaxqueue = 50, resmaxbuf = 32*resmaxqueue;
 char rescombuf[resmaxbuf];
 int resnumqueue=0, residx=0;
-void resultFlush(int i) {
-  // nothing to flush
-  if (residx==0) return;
-
-  // 
-  onion_response *res = queue[i].res;
-  onion_websocket *ws = queue[i].ws;
-
-  // zero terminate buffer
-  rescombuf[residx-1] = 0;
-
-  // send buffer and reset inices
-  if (res) onion_response_printf(res, "RESULT %s\n", rescombuf);
-  if (ws)  onion_websocket_printf(ws, "RESULT %s\n", rescombuf);
-  resnumqueue=0; residx=0;
-}
-void resultQueue(int i, result_type item) {
-  // TODO check for truncation (but what then?!)
-  residx += snprintf(&(rescombuf[residx]), resmaxbuf-residx, "%d,%d|", int(item & cat_mask), int((item & depth_mask)>>depth_shift));
-
-  // queued enough values?
-  if (++resnumqueue == resmaxqueue) resultFlush(i);
-}
 ssize_t resultPrintf(int i, const char *fmt, ...) {
   int ret;
   char buf[512];
@@ -77,20 +54,55 @@ ssize_t resultPrintf(int i, const char *fmt, ...) {
     if (queue[i].connection==WC_XHR) 
       return onion_response_printf(res, "%s", buf);
     // wrap response in a callback call (first data item)
-    if (queue[i].connection==WC_JS) {
-      return onion_response_printf(res, "fastcciCallback( ['%s',", buf);
-      queue[i].connection=WC_JS_CONT;
-    }
-    // continued transmission in JS mode (close the callbeack when the final DONE is sent)
-    if (queue[i].connection==WC_JS_CONT) {
-      if (strcmp(buf,"DONE")==0)
-        return onion_response_printf(res, "'DONE');\n");
-      else
-        return onion_response_printf(res, "'%s',", buf);
-    }
+    else if (queue[i].connection==WC_JS) 
+      return onion_response_printf(res, " '%s',", buf);
   }
   if (ws)  return onion_websocket_printf(ws, "%s", buf);
   return 0;
+}
+void resultDone(int i) {
+  queue[i].status = WS_DONE;
+  onion_response *res = queue[i].res;
+  onion_websocket *ws = queue[i].ws;
+
+  // TODO: use onion_*_write here?
+  if (res) {
+    // regular text response
+    if (queue[i].connection==WC_XHR) 
+      onion_response_printf(res, "DONE\n");
+    else 
+      onion_response_printf(res, " 'DONE\n'] );\n");
+  }
+  if (ws)  onion_websocket_printf(ws, "DONE\n");
+}
+void resultStart(int i) {
+  onion_response *res = queue[i].res;
+  onion_websocket *ws = queue[i].ws;
+
+  if (res && queue[i].connection==WC_JS) onion_response_printf(res, "fastcciCallback( [");
+  if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START\n");  
+}
+void resultFlush(int i) {
+  // nothing to flush
+  if (residx==0) return;
+
+  // 
+  onion_response *res = queue[i].res;
+  onion_websocket *ws = queue[i].ws;
+
+  // zero terminate buffer
+  rescombuf[residx-1] = 0;
+
+  // send buffer and reset inices
+  resultPrintf(i, "RESULT %s\n", rescombuf);
+  resnumqueue=0; residx=0;
+}
+void resultQueue(int i, result_type item) {
+  // TODO check for truncation (but what then?!)
+  residx += snprintf(&(rescombuf[residx]), resmaxbuf-residx, "%d,%d|", int(item & cat_mask), int((item & depth_mask)>>depth_shift));
+
+  // queued enough values?
+  if (++resnumqueue == resmaxqueue) resultFlush(i);
 }
 
 /*
@@ -563,7 +575,6 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   queue[i].s = sparam ? atoi(sparam) : 100;
 
   queue[i].status = WS_WAITING;
-  queue[i].connection = WC_NULL;
 
   const char* aparam = onion_request_get_query(req, "a");
 
@@ -612,7 +623,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
     // shuld we send a javascript callback for older browsers?
     const char* tparam = onion_request_get_query(req, "t");
-    if (tparam!=NULL && strcmp(aparam,"jsonp")==0) {
+    if (tparam!=NULL && strcmp(tparam,"js")==0) {
       queue[i].connection = WC_JS;
       onion_response_set_header(res, "Content-Type","application/javascript; charset=utf8");
     } else {
@@ -716,7 +727,7 @@ void *computeThread( void *d ) {
       int i = aItem % maxItem;
 
       // signal start of compute
-      if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START\n");  
+      resultStart(i);
 
       if (queue[i].type==WT_PATH) {
         // path finding
@@ -759,8 +770,7 @@ void *computeThread( void *d ) {
       }
 
       // done with this request
-      resultPrintf(i, "DONE\n");
-      queue[i].status = WS_DONE;
+      resultDone(i);
 
       // pop item off queue
       pthread_mutex_lock(&mutex);
