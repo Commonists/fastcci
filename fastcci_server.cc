@@ -52,7 +52,7 @@ ssize_t resultPrintf(int i, const char *fmt, ...) {
   if (res) {
     // regular text response
     if (queue[i].connection==WC_XHR) 
-      return onion_response_printf(res, "%s", buf);
+      return onion_response_printf(res, "%s\n", buf);
     // wrap response in a callback call (first data item)
     else if (queue[i].connection==WC_JS) 
       return onion_response_printf(res, " '%s',", buf);
@@ -71,16 +71,16 @@ void resultDone(int i) {
     if (queue[i].connection==WC_XHR) 
       onion_response_printf(res, "DONE\n");
     else 
-      onion_response_printf(res, " 'DONE\n'] );\n");
+      onion_response_printf(res, " 'DONE'] );\n");
   }
-  if (ws)  onion_websocket_printf(ws, "DONE\n");
+  if (ws)  onion_websocket_printf(ws, "DONE");
 }
 void resultStart(int i) {
   onion_response *res = queue[i].res;
   onion_websocket *ws = queue[i].ws;
 
   if (res && queue[i].connection==WC_JS) onion_response_printf(res, "fastcciCallback( [");
-  if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START\n");  
+  if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START");  
 }
 void resultFlush(int i) {
   // nothing to flush
@@ -94,7 +94,7 @@ void resultFlush(int i) {
   rescombuf[residx-1] = 0;
 
   // send buffer and reset inices
-  resultPrintf(i, "RESULT %s\n", rescombuf);
+  resultPrintf(i, "RESULT %s", rescombuf);
   resnumqueue=0; residx=0;
 }
 void resultQueue(int i, result_type item) {
@@ -279,7 +279,7 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
     while (i--) resultQueue(qi, history[i] + (result_type(len-i)<<depth_shift));
     resultFlush(qi);
   } else {
-    resultPrintf(qi, "NOPATH\n"); 
+    resultPrintf(qi, "NOPATH"); 
   }
 }
 
@@ -313,7 +313,7 @@ void traverse(int qi) {
   resultFlush(qi);
 
   // send the (exact) size of the complete result set
-  resultPrintf(qi, "OUTOF %d\n", fnum[0]); 
+  resultPrintf(qi, "OUTOF %d", fnum[0]); 
 }
 
 void notin(int qi) {
@@ -410,7 +410,7 @@ void intersect(int qi) {
 
   // was one of the results empty?
   if (fnum[0]==0 || fnum[1]==0) {
-    resultPrintf(qi, "OUTOF %d\n", 0); 
+    resultPrintf(qi, "OUTOF %d", 0); 
     return;
   }
 
@@ -469,7 +469,7 @@ void intersect(int qi) {
 
     // send the (estimated) size of the complete result set
     int est = n + int( double(n)/double(i+1) * double(fnum[large]+1) );
-    resultPrintf(qi, "OUTOF %d\n", est); 
+    resultPrintf(qi, "OUTOF %d", est); 
   } else {
     // sort both and intersect then
     fprintf(stderr,"using sort strategy.\n");
@@ -659,7 +659,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
     queue[i].ws  = ws;
     queue[i].res = NULL;
 
-    onion_websocket_printf(ws, "QUEUED %d\n", i-aItem);  
+    onion_websocket_printf(ws, "QUEUED %d", i-aItem);  
 
     // append to the queue and signal worker thread
     pthread_mutex_lock(&mutex);
@@ -679,12 +679,12 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
       switch (status) {
         case WS_WAITING :
           // send number of jobs ahead of this one in queue
-          onion_websocket_printf(ws, "WAITING %d\n", i-aItem);  
+          onion_websocket_printf(ws, "WAITING %d", i-aItem);  
           break;
         case WS_PREPROCESS :
         case WS_COMPUTING :
           // send intermediate result sizes
-          onion_websocket_printf(ws, "WORKING %d %d\n", fnum[0], fnum[1]);  
+          onion_websocket_printf(ws, "WORKING %d %d", fnum[0], fnum[1]);  
           break;
       }
       // don't do anything if status is WS_STREAMING, the compute task is sending data
