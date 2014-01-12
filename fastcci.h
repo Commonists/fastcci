@@ -58,7 +58,6 @@ int rbGrow(ringBuffer &rb) {
 }
 inline void rbPush(ringBuffer &rb, result_type r) {
   if (rb.b-rb.a >= rb.size) rbGrow(rb);
-  //fprintf(stderr,"Ring buffer push %d,%d   a=%d b=%d size=%d\n", r&cat_mask, (r&depth_mask) >> depth_shift, rb.a, rb.b, rb.size );
   rb.buf[(rb.b++) & rb.mask] = r;
 }
 inline result_type rbPop(ringBuffer &rb) {

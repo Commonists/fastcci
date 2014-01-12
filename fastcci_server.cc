@@ -155,7 +155,7 @@ void fetchFiles(int id, int depth) {
     while (len--) {
       r =  *src++; 
       if (mask[r]==0) {
-        *dst++ = r | d;
+        *dst++ = (r | d);
         mask[r] = 2;
       }
     }
@@ -437,30 +437,31 @@ void intersect(int qi) {
         // remove this match from the small result set (cast result_type* to tree_type* before dereferencing to only compare the first 32bit)
         // and find minimum depth value. Note: we can only take the depth of the smaller result set into account here!!
         result_type mindepthresult = *j;
-        j0=j; while(j0>fbuf[small] && *(tree_type*)j==*(tree_type*)j0) {
+        j0=j-1; while(j0>fbuf[small] && *(tree_type*)j==*(tree_type*)j0) {
           if ((*j0 & depth_mask) < (mindepthresult & depth_mask) ) mindepthresult = *j0;
           j0--; 
         }
-        j1=j; while(j1<end && *(tree_type*)j==*(tree_type*)j1) {
+        j1=j+1; while(j1<end && *(tree_type*)j==*(tree_type*)j1) {
           if ((*j1 & depth_mask) < (mindepthresult & depth_mask) ) mindepthresult = *j1;
           j1++;
         }
 
         // are we at the output offset?
-        if (n>=outstart) resultQueue(qi, (fbuf[large][i] & depth_mask) + mindepthresult ); // output result with mindepth plus depth in the large category
+        if (n>=outstart) {
+          //fprintf(stderr, "depth: %ld %ld  %d %d\n", fbuf[large][i], mindepthresult, (fbuf[large][i] & depth_mask)>>depth_shift, (mindepthresult & depth_mask)>>depth_shift);
+          resultQueue(qi, (fbuf[large][i] & depth_mask) + mindepthresult ); // output result with mindepth plus depth in the large category
+        }
         n++;
         if (n>=outend) break;
 
         // fill in from the entry before or after (if this was the last entry break out of the loop)
-        if (j1<end) r = *(tree_type*)j1;
-        else if (j0>fbuf[small]) r = *(tree_type*)j0;
+        result_type rr;
+        if (j1<end) rr = *j1;
+        else if (j0>=fbuf[small]) rr = *j0;
         else break;
 
         j1--;
-        result_type rr = (result_type)r | depth_mask; // set the depth mask to maximum 
-        do {
-          *(++j0) = rr; 
-        } while(j0<j1);
+        while(j0<j1) *(++j0) = rr; 
       }
     }
 
@@ -751,6 +752,12 @@ void *computeThread( void *d ) {
           resbuf=j;
           fetchFiles(cid[j],depth[j]);
           fprintf(stderr,"fnum(%d) %d\n", cid[j], fnum[j]);
+
+          // check results
+          /*for (int k=0; k<fnum[j]; ++k) {
+            if (((fbuf[j][k]&depth_mask)>>depth_shift)>1000 )
+              fprintf(stderr,"BIGMSK %d\n", (fbuf[j][k]&depth_mask)>>depth_shift );
+          }*/
         }
 
         // compute result
