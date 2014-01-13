@@ -415,7 +415,7 @@ void intersect(int qi) {
   }
 
   // otherwise decide on an intersection strategy
-  if (true || fnum[0]>1000000 || fnum[1]>1000000) {
+  if (fnum[0]>1000000 || fnum[1]>1000000) {
     fprintf(stderr,"using bsearch strategy.\n");
     // sort the smaller and bsearch on it
     int small, large;
@@ -490,24 +490,11 @@ void intersect(int qi) {
       else if (*(tree_type*)j0 < *(tree_type*)j1) 
         j1++;
       else {
-        r = *(tree_type*)j0;
-        m0 = (*j0++) & depth_mask;
+        m0 = (*j0++);
         m1 = (*j1++) & depth_mask;
  
-        // advance j0 until we are at a new element (find smallest depth value)
-        while(j0<f0 && *(tree_type*)j0==r) {
-          if ((*j0 & depth_mask) < m0) m0 = *j0 & depth_mask;
-          j0++;
-        }
-
-        // advance j1 until we are at a new element (find smallest depth value)
-        while(j1<f1 && *(tree_type*)j1==r) {
-          if ((*j1 & depth_mask) < m1) m1 = *j1 & depth_mask;
-          j1++;
-        }
-
         // are we at the output offset?
-        if (n>=outstart) resultQueue(qi, m0+m1+result_type(r));
+        if (n>=outstart) resultQueue(qi, m0+m1);
         n++;
         if (n>=outend) break;
       }

@@ -99,7 +99,7 @@ int readFile(const char *fname, tree_type* &buf) {
 }
 
 int compare (const void * a, const void * b) {
-  return ( *(tree_type*)a - *(tree_type*)b );
+  return ( *(tree_type*)b - *(tree_type*)a );
 }
 
 
