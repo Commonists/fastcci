@@ -67,21 +67,24 @@ int main(int argc, char *argv[]) {
         cstart = csubcat = cfile;
         csubcat += 2;
         cfile   += 2;
-        expect = 0;
       }
 
+      if (cfile>=maxtree) growTree();
+
       if (type[0]=='s') {
-        if (expect!=0) {
-          fprintf(stderr, "Did not expect a subcategory at this point!\n%s\n",buf);
-          exit(1);
+        // no files in category yet?
+        if (csubcat==cfile) {
+          tree[csubcat++] = cl_from;
+          cfile++;
+        } else {
+          // we already have a file at tree[subcat], move it to the end of cfile
+          fprintf(stderr,"out of order subcat!\n");
+          tree[cfile++] = tree[csubcat];
+          tree[csubcat++] = cl_from;
         }
-        if (csubcat>=maxtree) growTree();
-        tree[csubcat++] = cl_from;
-        cfile++;
       } else if (type[0]=='f') {
-        if (cfile>=maxtree) growTree();
+        // just append at cfile
         tree[cfile++] = cl_from;
-        expect = 1;
       }
 
       lcl_to = cl_to;

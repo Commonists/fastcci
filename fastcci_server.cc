@@ -111,7 +111,7 @@ void resultQueue(int i, result_type item) {
  * in a breadth first search up to depth 'depth'
  * if 'depth' id negative treat it as infinity
  */
-void fetchFiles(int id, int depth) {
+void fetchFiles(tree_type id, int depth) {
   // clear ring buffer
   rbClear(rb);
 
@@ -128,16 +128,20 @@ void fetchFiles(int id, int depth) {
     d = r & depth_mask;
     i = r & cat_mask;
     
-    if (cat[i]<0) fprintf(stderr,"Ring buffer popped file! %d\n", i);
+    if (cat[i]<0) 
+      fprintf(stderr,"Ring buffer popped file! %d\n", i);
+    else
+      fprintf(stderr,"OK %d\n", i);
 
     // tag current category as visited
     mask[i]=1;
 
     int c = cat[i], cend = tree[c], cfile = tree[c+1];
     c += 2;
+    fprintf(stderr,"C %d %d %d\n", c, cend, cfile);
 
     // push all subcat to queue
-    e = d + (1l<<depth_shift);
+    e = d + (result_type(1)<<depth_shift);
     if (d<md || depth<0) {
       while (c<cend) {
         // push unvisited categories into the queue
@@ -160,7 +164,7 @@ void fetchFiles(int id, int depth) {
     tree_type   *src = &(tree[c]);
     while (len--) {
       r =  *src++; 
-      if (cat[r]>0) fprintf(stderr,"Adding Category to results! %d\n", r);
+      if (cat[r]>0) fprintf(stderr,"Adding Category to results! %d (at %d)\n", r, src-&(tree[c]));
       if (mask[r]==0) {
         *dst++ = (r | d);
         mask[r] = 2;
@@ -240,7 +244,7 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
     c += 2;
 
     // push all subcat to queue
-      e = d + (1l<<depth_shift);
+    e = d + (result_type(1)<<depth_shift);
     if (depth<maxDepth || maxDepth<0) {
       while (c<cend) {
         // inspect if we are pushing the target cat to the queue
@@ -836,7 +840,7 @@ int main(int argc, char *argv[]) {
   onion_url_add(url, "status", (void*)handleStatus);
   onion_url_add(url, "",    (void*)handleRequest);
 
-  fprintf(stderr,"Server ready.\n");
+  fprintf(stderr,"Server ready. [%d,%d]\n", sizeof(tree_type), sizeof(result_type));
   int error = onion_listen(o);
   if (error) perror("Cant create the server");
   
