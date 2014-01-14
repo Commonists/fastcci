@@ -98,7 +98,29 @@ int main(int argc, char *argv[]) {
   qsort(&(tree[csubcat]),cfile-csubcat,sizeof(int),compare);
 
   // verify data
-  for (int i=0; i<=lcl_to; ++i);
+  for (int i=0; i<=lcl_to; ++i) {
+    cstart = cat[i];
+    if (cstart<0) continue;
+
+    csubcat = tree[cstart];
+    cfile = tree[cstart+1];
+
+    cstart += 2;
+
+    // verify subcats
+    for(; cstart<csubcat; cstart++) 
+      if (tree[cstart] < 0 ) {
+        fprintf(stderr,"File in subcat block of cat %d\n", i);
+        exit(1);
+      }
+
+    // verify files
+    for(; cstart<cfile; cstart++) 
+      if (tree[cstart] != -1 ) {
+        fprintf(stderr,"Category in file block of cat %d\n", i);
+        exit(1);
+      }
+  }
 
   // write out binary tree files
   FILE *outtree = fopen("../fastcci.tree","wb");
