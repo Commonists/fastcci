@@ -144,11 +144,10 @@ void fetchFiles(tree_type id, int depth) {
     e = d + (result_type(1)<<depth_shift);
     if (d<md || depth<0) {
       while (c<cend) {
-        // push unvisited categories into the queue
-        if (mask[tree[c]]==0) {
+        // push unvisited categories (that are not empty, cat[id]==0) into the queue
+        if (mask[tree[c]]==0 && cat[tree[c]]>0) {
           rbPush(rb, tree[c] | e);
         }
-        
         c++;
       }
     }

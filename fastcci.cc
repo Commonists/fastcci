@@ -38,7 +38,11 @@ int main(int argc, char *argv[]) {
 
   // category tree buffer
   growTree();
-  int cstart=0, cfile=0, csubcat=0;
+
+  // insert empty dummy category at tree[0]
+  int cstart=2, cfile=2, csubcat=2;
+  tree[0] = 2;
+  tree[1] = 2;
 
   // read data dump line by line
   char buf[200], type[10];
@@ -72,6 +76,9 @@ int main(int argc, char *argv[]) {
       if (cfile>=maxtree) growTree();
 
       if (type[0]=='s') {
+        // is the cat index of this subcategory still -1, then set it to the empty dummy cat 0
+        if (cat[cl_from]==-1) cat[cl_from]=0;
+
         // no files in category yet?
         if (csubcat==cfile) {
           tree[csubcat++] = cl_from;
