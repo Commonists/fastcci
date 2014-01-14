@@ -128,6 +128,8 @@ void fetchFiles(int id, int depth) {
     d = r & depth_mask;
     i = r & cat_mask;
     
+    if (cat[i]<0) fprintf(stderr,"Ring buffer popped file! %d\n", i);
+
     // tag current category as visited
     mask[i]=1;
 
@@ -139,7 +141,10 @@ void fetchFiles(int id, int depth) {
     if (d<md || depth<0) {
       while (c<cend) {
         // push unvisited categories into the queue
-        if (mask[tree[c]]==0) rbPush(rb, tree[c] | e);
+        if (mask[tree[c]]==0) {
+          rbPush(rb, tree[c] | e);
+        }
+        
         c++;
       }
     }
@@ -155,6 +160,7 @@ void fetchFiles(int id, int depth) {
     tree_type   *src = &(tree[c]);
     while (len--) {
       r =  *src++; 
+      if (cat[r]>0) fprintf(stderr,"Adding Category to results! %d\n", r);
       if (mask[r]==0) {
         *dst++ = (r | d);
         mask[r] = 2;
@@ -416,7 +422,7 @@ void intersect(int qi) {
   }
 
   // otherwise decide on an intersection strategy
-  if (true || fnum[0]>1000000 || fnum[1]>1000000) {
+  if (fnum[0]>1000000 || fnum[1]>1000000) {
     fprintf(stderr,"using bsearch strategy.\n");
     // sort the smaller and bsearch on it
     int small, large;
@@ -743,8 +749,8 @@ void *computeThread( void *d ) {
 
           // check results
           /*for (int k=0; k<fnum[j]; ++k) {
-            if (((fbuf[j][k]&depth_mask)>>depth_shift)>1000 )
-              fprintf(stderr,"BIGMSK %d\n", (fbuf[j][k]&depth_mask)>>depth_shift );
+            if ( cat[fbuf[j][k]&cat_mask]>=0 )
+              fprintf(stderr,"CATINRES %d %d\n", j, k );
           }*/
         }
 

@@ -31,7 +31,7 @@ void growCat(int max=0) {
 
 
 int main(int argc, char *argv[]) {
-  int i;
+  int i, j;
 
   // category index
   growCat();
@@ -87,12 +87,18 @@ int main(int argc, char *argv[]) {
       lcl_to = cl_to;
     }
   }
+
+  // make sure we have enough memory for the index
+  if (lcl_to>=maxcat) growCat(lcl_to);
+
+  // close final category header
   cat[lcl_to] = cstart;
   tree[cstart]   = csubcat;
   tree[cstart+1] = cfile;
-
-  // pre-sort the file list
   qsort(&(tree[csubcat]),cfile-csubcat,sizeof(int),compare);
+
+  // verify data
+  for (int i=0; i<=lcl_to; ++i);
 
   // write out binary tree files
   FILE *outtree = fopen("../fastcci.tree","wb");
