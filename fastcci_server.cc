@@ -1,3 +1,4 @@
+#include <time.h>
 #include "fastcci.h"
 
 // thread management objects
@@ -597,7 +598,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   // log request
   if (queue[i].c1==queue[i].c2) aparam="list";
   else if (aparam==NULL) aparam="and";
-  fprintf(stderr, "Request: a=%s c1=%d(%d) c2=%d(%d)\n", aparam, queue[i].c1, queue[i].d1, queue[i].c2, queue[i].d2);
+  fprintf(stderr, "Request [%ld %d]: a=%s c1=%d(%d) c2=%d(%d)\n", time(NULL), bItem-aItem, aparam, queue[i].c1, queue[i].d1, queue[i].c2, queue[i].d2);
 
   // attempt to open a websocket connection
   onion_websocket *ws = onion_websocket_new(req, res);
