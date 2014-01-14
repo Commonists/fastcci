@@ -416,7 +416,7 @@ void intersect(int qi) {
   }
 
   // otherwise decide on an intersection strategy
-  if (fnum[0]>1000000 || fnum[1]>1000000) {
+  if (true || fnum[0]>1000000 || fnum[1]>1000000) {
     fprintf(stderr,"using bsearch strategy.\n");
     // sort the smaller and bsearch on it
     int small, large;
