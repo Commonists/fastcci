@@ -128,17 +128,17 @@ void fetchFiles(tree_type id, int depth) {
     d = r & depth_mask;
     i = r & cat_mask;
     
-    if (cat[i]<0) 
+    /*if (cat[i]<0) 
       fprintf(stderr,"Ring buffer popped file! %d\n", i);
     else
-      fprintf(stderr,"OK %d\n", i);
+      fprintf(stderr,"OK %d\n", i);*/
 
     // tag current category as visited
     mask[i]=1;
 
     int c = cat[i], cend = tree[c], cfile = tree[c+1];
     c += 2;
-    fprintf(stderr,"C %d %d %d\n", c, cend, cfile);
+    //fprintf(stderr,"C %d %d %d\n", c, cend, cfile);
 
     // push all subcat to queue
     e = d + (result_type(1)<<depth_shift);
@@ -164,7 +164,7 @@ void fetchFiles(tree_type id, int depth) {
     tree_type   *src = &(tree[c]);
     while (len--) {
       r =  *src++; 
-      if (cat[r]>0) fprintf(stderr,"Adding Category to results! %d (at %d)\n", r, src-&(tree[c]));
+      //if (cat[r]>0) fprintf(stderr,"Adding Category to results! %d (at %d)\n", r, src-&(tree[c]));
       if (mask[r]==0) {
         *dst++ = (r | d);
         mask[r] = 2;
