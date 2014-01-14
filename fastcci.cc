@@ -121,15 +121,15 @@ int main(int argc, char *argv[]) {
 
     // verify subcats
     for(; cstart<csubcat; cstart++) 
-      if (tree[cstart] < 0 ) {
-        fprintf(stderr,"File in subcat block of cat %d\n", i);
+      if (cat[tree[cstart]] < 0 ) {
+        fprintf(stderr,"File %d in subcat block of cat %d\n", tree[cstart], i);
         exit(1);
       }
 
     // verify files
     for(; cstart<cfile; cstart++) 
-      if (tree[cstart] != -1 ) {
-        fprintf(stderr,"Category in file block of cat %d\n", i);
+      if (cat[tree[cstart]] != -1 ) {
+        fprintf(stderr,"Category %d in file block of cat %d\n", tree[cstart], i);
         exit(1);
       }
   }
