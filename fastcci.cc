@@ -107,6 +107,15 @@ int main(int argc, char *argv[]) {
 
     cstart += 2;
 
+    if (csubcat<cstart) {
+      fprintf(stderr,"Negative subcat block length in cat %d\n", i);
+      exit(1);
+    } 
+    if (cfile<csubcat) {
+      fprintf(stderr,"Negative file block length in cat %d\n", i);
+      exit(1);
+    } 
+
     // verify subcats
     for(; cstart<csubcat; cstart++) 
       if (tree[cstart] < 0 ) {
