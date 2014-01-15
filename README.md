@@ -18,13 +18,13 @@ FastCCI can operate without depth limits on categories.
 
 ## Where is FastCCI used?
 
-An instance of the FastCCI backend is running on Wikimedia Labs at [http://fastcci1.wmflabs.org/](curl 'http://fastcci1.wmflabs.org/status'). A frontend is available on Wikimedia Commons as a gadget ([Click here to install](https://commons.wikimedia.org/w/index.php?title=Help:FastCCI&withJS=MediaWiki:ActivateGadget.js&gadgetname=fastcci)).
+An instance of the FastCCI backend is running on Wikimedia Labs at [http://fastcci1.wmflabs.org/](http://fastcci1.wmflabs.org/status). A frontend is available on Wikimedia Commons as a gadget ([Click here to install](https://commons.wikimedia.org/w/index.php?title=Help:FastCCI&withJS=MediaWiki:ActivateGadget.js&gadgetname=fastcci)).
 
 ## Preparing database
 
 The database is generated from a simple parent child pageid table that is generated with a short SQL query. On Wikimedia Tool Labs this query can be launched with the following command. 
 The text output is streamed into the ```fastcci``` command that parses it and generates a binary database image, containing of the ```fastcci.cat``` index file and the ```fastcci.tree``` data file.
-Both files are saved to teh current directory.
+Both files are saved to the current directory.
 
 ```
 mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e 'select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!="page" and page_namespace=14 and page_title=cl_to order by page_id;' --quick --batch --silent | ./fastcci
