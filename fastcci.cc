@@ -142,8 +142,8 @@ int main(int argc, char *argv[]) {
   }
 
   // write out binary tree files
-  FILE *outtree = fopen("../fastcci.tree","wb");
-  FILE *outcat  = fopen("../fastcci.cat","wb");
+  FILE *outtree = fopen("fastcci.tree","wb");
+  FILE *outcat  = fopen("fastcci.cat","wb");
 
   fwrite(tree, sizeof *tree, cfile,    outtree);
   fwrite(cat,  sizeof *cat,  lcl_to+1, outcat);

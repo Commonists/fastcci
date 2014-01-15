@@ -791,7 +791,16 @@ void *computeThread( void *d ) {
 
 int main(int argc, char *argv[]) {
 
-  maxcat = readFile("../fastcci.cat", cat);
+  if (argc != 3) {
+    printf("%s PORT DATADIR\n", argv[0]);
+    return 1;
+  }
+
+  const int buflen = 1000;
+  char fname[buflen];
+
+  snprintf(fname, buflen, "%s/fastcci.cat", argv[2]);
+  maxcat = readFile(fname, cat);
   maxcat /= sizeof(tree_type);
 
   // visitation mask buffer (could be 1/8 by using a bitmask)
@@ -800,7 +809,8 @@ int main(int argc, char *argv[]) {
   // parent category buffer for shortest path finding
   parent = (tree_type*)malloc(maxcat * sizeof *parent);
 
-  readFile("../fastcci.tree", tree);
+  snprintf(fname, buflen, "%s/fastcci.tree", argv[2]);
+  readFile(fname, tree);
 
   // intermediate return buffers
   fbuf[0]=(result_type*)malloc(fmax[0] * sizeof **fbuf);
@@ -809,11 +819,6 @@ int main(int argc, char *argv[]) {
   // ring buffer for breadth first
   rbInit(rb);
 
-  if (argc != 2) {
-    printf("%s PORT\n", argv[0]);
-    return 1;
-  }
-  
   // thread properties
   pthread_attr_t attr;
   pthread_attr_init(&attr);
@@ -839,7 +844,7 @@ int main(int argc, char *argv[]) {
   onion_url_add(url, "status", (void*)handleStatus);
   onion_url_add(url, "",    (void*)handleRequest);
 
-  fprintf(stderr,"Server ready. [%d,%d]\n", sizeof(tree_type), sizeof(result_type));
+  fprintf(stderr,"Server ready. [%ld,%ld]\n", sizeof(tree_type), sizeof(result_type));
   int error = onion_listen(o);
   if (error) perror("Cant create the server");
   

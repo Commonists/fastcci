@@ -89,6 +89,7 @@ struct workItem {
 };
 
 int readFile(const char *fname, tree_type* &buf) {
+  fprintf(stderr, "Loading %s ...\n", fname);
   FILE *in = fopen(fname,"rb");
   fseek(in, 0L, SEEK_END);
   int sz = ftell(in);

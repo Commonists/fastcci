@@ -1,35 +1,38 @@
-fastcci
+FastCCI
 =======
+
+![FastCCI Logo](http://i.imgur.com/OPQOsVK.png)
 
 Fast Commons Category Inspection is an in-memory database for fast commons category operations such as
 
 * Loop detection
 * Deep traversal
 * Category intersection
+* Category subtraction
 
-fastcci can operate without depth limits on categories.
+FastCCI can operate without depth limits on categories.
 
 ```fastcci``` builds the binary database files form an SQL dump of the categorylinks database.
 
 ```fastcci_server``` is the database server backend that can be queried through HTTP.
 
+## Where is FastCCI used?
+
+An instance of the FastCCI backend is running on Wikimedia Labs at [http://fastcci1.wmflabs.org/](curl 'http://fastcci1.wmflabs.org/status'). A frontend is available on Wikimedia Commons as a gadget ([Click here to install](https://commons.wikimedia.org/w/index.php?title=Help:FastCCI&withJS=MediaWiki:ActivateGadget.js&gadgetname=fastcci)).
+
 ## Preparing database
 
-```
-mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e 'select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!="page" and page_namespace=14 and page_title=cl_to order by page_id;' --quick --batch --silent > $HOME/commons_categories.txt
-```
-
-then call 
+The database is generated from a simple parent child pageid table that is generated with a short SQL query. On Wikimedia Tool Labs this query can be launched with the following command. 
+The text output is streamed into the ```fastcci``` command that parses it and generates a binary database image, containing of the ```fastcci.cat``` index file and the ```fastcci.tree``` data file.
+Both files are saved to teh current directory.
 
 ```
-./fastcci maxcat < $HOME/commons_categories.txt
+mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e 'select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!="page" and page_namespace=14 and page_title=cl_to order by page_id;' --quick --batch --silent | ./fastcci
 ```
-
-where ```maxcat``` is the highest category number (this will be made automatic).
 
 ## Query syntax
 
-Start the server with ```./fastcci_server PORT```, where ```PORT``` is the tcp port the server will listen. The ```fastcci.cat``` and ```fastcci.tree``` files have to be in the parent directory of the executable.
+Start the server with ```./fastcci_server PORT DATADIR```, where ```PORT``` is the tcp port the server will listen, and ```DATADIR``` is the path to the ```fastcci.cat``` and ```fastcci.tree``` files.
 
 The server can be queried through HTTP or WebSockets. The URLs are the same in both cases (except for the protocol part). The request string looks like an ordinary HTTP GET URL.
 assuming the server was started on port 8080 you can query it using curl like this:
@@ -37,6 +40,9 @@ assuming the server was started on port 8080 you can query it using curl like th
 ```
 curl 'http://localhost:8080/?c1=9986&c2=26398707&a=path'
 ```
+
+For backwards compatibility with browsers that do not properly support cross-domain requests a JavaScript callback mode exists, that wraps the result data in a function call to a ```fastcci_callback``` function. This mode is activated by adding the 
+```t=js``` query parameter and value.
 
 ### Query parameters
 
@@ -51,4 +57,5 @@ curl 'http://localhost:8080/?c1=9986&c2=26398707&a=path'
   * ```path``` Find the subcategory path from category ```c1``` to file or category ```c2```
 
 
+The server performs some sanity checking on the query parameters to make sure that the pageids supplied are pointing to categories (or if allowed to files).
 
