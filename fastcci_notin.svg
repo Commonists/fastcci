@@ -14,7 +14,7 @@
    id="svg2"
    version="1.1"
    inkscape:version="0.48.4 r9939"
-   sodipodi:docname="fastcci.svg">
+   sodipodi:docname="fastcci_intersect.svg">
   <defs
      id="defs4" />
   <sodipodi:namedview
@@ -57,6 +57,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -66,12 +67,12 @@
      id="layer1"
      transform="translate(-79.999908,-372.36218)">
     <path
-       style="fill:#000096;fill-opacity:1;stroke:none"
+       style="fill:#000096;fill-opacity:0.39215687;stroke:none"
        d="M 120.15625 0 C 53.88213 -0.08115 0.08115 53.56963 0 119.84375 C -0.064113365 172.20428 33.414741 216.80167 80.15625 233.25 C 80.487467 226.27745 81.341657 219.44972 82.65625 212.78125 C 45.889423 197.9658 19.948491 161.9414 20 119.875 C 20.0676 64.64657 64.89657 19.93238 120.125 20 C 168.46294 20.059192 208.74831 54.426492 218 100.03125 C 218.72231 100.02115 219.43134 99.999112 220.15625 100 C 226.37876 100.00762 232.5243 100.42449 238.53125 101.21875 C 229.52349 43.928018 179.98444 0.073252906 120.15625 0 z "
        id="path2989"
        transform="translate(79.999908,372.36218)" />
     <path
-       style="fill:#0000ff;fill-opacity:1;stroke:none"
+       style="fill:#0000ff;fill-opacity:0.39215687;stroke:none"
        d="M 120.125 20 C 64.896566 19.932375 20.067625 64.646566 20 119.875 C 19.948492 161.94141 45.888759 197.96652 82.65625 212.78125 C 95.207404 149.11365 150.90533 100.96897 218 100.03125 C 208.75888 54.412536 168.47305 20.0592 120.125 20 z "
        id="path2995"
        transform="translate(79.999908,372.36218)" />
@@ -91,7 +92,7 @@
        id="path3030"
        inkscape:connector-curvature="0" />
     <path
-       style="fill:#c80000;fill-opacity:1;stroke:none"
+       style="fill:#c80000;fill-opacity:0.3938053;stroke:none"
        d="m 296.53125,472.40625 c -66.45944,1.60192 -121.42818,49.52733 -133.875,112.75 6.1464,2.47593 12.60001,4.37453 19.28125,5.59375 10.17752,-55.97053 59.18334,-98.37178 118.0625,-98.375 0,-6.8341 -0.69366,-13.5195 -2,-19.96875 -0.48772,0.007 -0.98225,-0.0117 -1.46875,0 z"
        id="path3825"
        inkscape:connector-curvature="0" />
@@ -101,7 +102,7 @@
        id="path3830"
        inkscape:connector-curvature="0" />
     <path
-       style="fill:#ff0000;fill-opacity:1;stroke:none"
+       style="fill:#ff0000;fill-opacity:0.3938053;stroke:none"
        d="m 300,492.375 c -58.87914,0.003 -107.88662,42.40285 -118.0625,98.375 5.82142,1.06231 11.81054,1.6175 17.9375,1.625 C 255.10343,592.4426 299.93238,547.72843 300,492.5 l 0,-0.0625 c 10e-6,-0.0208 0,-0.0417 0,-0.0625 z"
        id="path3025"
        inkscape:connector-curvature="0" />
