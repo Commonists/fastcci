@@ -15,5 +15,5 @@ add_executable(fastcci_intersection2 fastcci_intersection2.cc)
 add_executable(fastcci_subcats fastcci_subcats.cc)
 add_executable(fastcci_path fastcci_path.cc)
 
-install (TARGETS fastcci_server fastcci DESTINATION bin)
-
+install (TARGETS fastcci_server fastcci DESTINATION /usr/bin COMPONENT binaries)
+install(FILES fastcci.conf DESTINATION /etc COMPONENT config)
