@@ -14,3 +14,6 @@ add_executable(fastcci_circulartest fastcci_circulartest.cc)
 add_executable(fastcci_intersection2 fastcci_intersection2.cc)
 add_executable(fastcci_subcats fastcci_subcats.cc)
 add_executable(fastcci_path fastcci_path.cc)
+
+install (TARGETS fastcci_server fastcci DESTINATION bin)
+
