@@ -1,0 +1,6 @@
+# logrotate config
+/var/log/fastcci.log {
+         copytruncate
+         rotate 7
+}
+
