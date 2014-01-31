@@ -137,9 +137,6 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
   // clear ring buffer
   rbClear(rb);
 
-  // compute max depth
-  result_type md = result_type(depth) << depth_shift;
-
   // push root node (depth 0)
   rbPush(rb,id);
 
@@ -148,7 +145,7 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
   int c, len;
   while (!rbEmpty(rb)) {
     r = rbPop(rb);
-    d = r & depth_mask;
+    d = (r & depth_mask) >> depth_shift;
     i = r & cat_mask;
     
     /*if (cat[i]<0) 
@@ -164,8 +161,8 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
     //fprintf(stderr,"C %d %d %d\n", c, cend, cfile);
 
     // push all subcat to queue
-    e = d + (result_type(1)<<depth_shift);
-    if (d<md || depth<0) {
+    if (d<depth || depth<0) {
+      e = (d+1)<<depth_shift;
       while (c<cend) {
         // push unvisited categories (that are not empty, cat[id]==0) into the queue
         if (mask[tree[c]]==0 && cat[tree[c]]>0) {
@@ -180,9 +177,7 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
     result.grow(len);
     result_type *dst = result.tail(), *old = dst;
     tree_type   *src = &(tree[c]);
-    d = e >> depth_shift;
-    f = d<255 ? d : 255;
-    if (f==0) exit(1); // should never happen!!
+    f = d<254 ? (d+1) : 255;
     while (len--) {
       r =  *src++; 
       if (mask[r]==0) {
@@ -213,7 +208,7 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
   int c, len;
   while (!rbEmpty(rb) && !foundPath) {
     r  = rbPop(rb);
-    d  = r & depth_mask;
+    d  = (r & depth_mask) >> depth_shift;
     id = r & cat_mask;
     
     // next layer?
@@ -227,8 +222,9 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
     c += 2;
 
     // push all subcat to queue
-    e = d + (result_type(1)<<depth_shift);
     if (depth<maxDepth || maxDepth<0) {
+      e = (d+1)<<depth_shift;
+
       while (c<cend) {
         // inspect if we are pushing the target cat to the queue
         if (tree[c]==did) {
