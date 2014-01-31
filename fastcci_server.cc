@@ -274,8 +274,6 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
 }
 
 void traverse(int qi, resultList &result) {
-  int n = 0; // number of current output item
-
   int outstart = queue[qi].o;
   int outend   = outstart + queue[qi].s;
   onion_response *res = queue[qi].res;
@@ -284,22 +282,11 @@ void traverse(int qi, resultList &result) {
   // sort
   result.sort();
 
-  // output unique files
+  // output selected subset
   queue[qi].status = WS_STREAMING;
-  result_type lr=-1, r;
-  for (int i=0; i<result.num; ++i) {
-    r = result.buf[i] & cat_mask;
-    if (r!=lr) { // TODO: not necessary, entries are unique due to masking
-      n++;
-      // are we still below the offset?
-      if (n<=outstart) continue;
-      // output file      
-      lr=r;
-      resultQueue(qi, result.buf[i]);
-      // are we at the end of the output window?
-      if (n>=outend) break;
-    }
-  }
+  if (outend>result.num) outend=result.num;
+  for (int i=outstart; i<outend; ++i )
+    resultQueue(qi, result.buf[i]);
   resultFlush(qi);
 
   // send the (exact) size of the complete result set
