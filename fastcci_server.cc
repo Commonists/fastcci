@@ -128,11 +128,12 @@ void resultQueue(int i, result_type item) {
   if (++resnumqueue == resmaxqueue) resultFlush(i);
 }
 
-/*
- * Fetch all files in and below category 'id'
- * in a breadth first search up to depth 'depth'
- * if 'depth' id negative treat it as infinity
- */
+
+//
+// Fetch all files in and below category 'id'
+// in a breadth first search up to depth 'depth'
+// if 'depth' id negative treat it as infinity
+//
 void fetchFiles(tree_type id, int depth, resultList &result) {
   // clear ring buffer
   rbClear(rb);
@@ -189,8 +190,9 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
   }
 }
 
-
+//
 // iteratively do a breadth first path search
+//
 result_type history[maxdepth]; 
 void tagCatNew(tree_type sid, int qi, int maxDepth) {
   // clear ring buffer
@@ -273,6 +275,9 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
   }
 }
 
+//
+// all images in result
+//
 void traverse(int qi, resultList &result) {
   int outstart = queue[qi].o;
   int outend   = outstart + queue[qi].s;
@@ -328,6 +333,9 @@ void notin(int qi, resultList &result) {
   resultFlush(qi);
 }
 
+//
+// all images in both rl0 and rl1 TODO: split sort and bsearch into separate functions. replace bsearch with mask-based approach(?)
+//
 void intersect(int qi, resultList &rl0, resultList &rl1) {
   int cid[2] = {queue[qi].c1, queue[qi].c2};
   resultList result[] = { rl0, rl1 };
