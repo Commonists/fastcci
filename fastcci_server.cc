@@ -8,9 +8,6 @@ pthread_cond_t condition;
 
 // category data and traversal information
 const int maxdepth=500;
-int resbuf;
-int fmax[2]={100000,100000}, fnum[2];
-result_type *fbuf[2] = {0};
 int maxcat; 
 tree_type *cat, *tree, *parent; 
 unsigned char *mask;
@@ -20,10 +17,11 @@ struct resultList {
   int max, num;
   result_type *buf;
   resultList() : max(100000), num(0) {
+    buf = (result_type*)malloc(max * sizeof *buf);
   }
 
   // pointer to element after the last result
-  result_type* tail() { return &(buf[num]); }  
+  result_type* tail() const { return &(buf[num]); }  
 
   // grow buffer to hold at least len more items
   void grow(int len) {
@@ -178,31 +176,23 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
 
     // copy and add the depth on top
     int len = cfile-c;
-    if (fnum[resbuf]+len > fmax[resbuf]) {
-      // grow buffer
-      while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
-      fbuf[resbuf] = (result_type*)realloc(fbuf[resbuf], fmax[resbuf] * sizeof **fbuf);
-    }
     result.grow(len);
-
-    result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), *old = dst;
-    //result_type *dst = result.tail(), *old = dst;
+    result_type *dst = result.tail(), *old = dst;
     tree_type   *src = &(tree[c]);
     while (len--) {
       r =  *src++; 
-      //if (cat[r]>0) fprintf(stderr,"Adding Category to results! %d (at %d)\n", r, src-&(tree[c]));
       if (mask[r]==0) {
         *dst++ = (r | d);
         mask[r] = 2;
       }
     }
-    fnum[resbuf] += dst-old;
-    // result.num += dst-old;
+    result.num += dst-old;
   }
 }
 
 
 // iteratively do a breadth first path search
+result_type history[maxdepth]; 
 void tagCatNew(tree_type sid, int qi, int maxDepth) {
   // clear ring buffer
   rbClear(rb);
@@ -292,21 +282,20 @@ void traverse(int qi, resultList &result) {
   onion_websocket *ws = queue[qi].ws;
 
   // sort
-  qsort(fbuf[0], fnum[0], sizeof **fbuf, compare);
-  // result.sort();
+  result.sort();
 
   // output unique files
   queue[qi].status = WS_STREAMING;
   result_type lr=-1, r;
-  for (int i=0; i<fnum[0]; ++i) {
-    r = fbuf[0][i] & cat_mask;
-    if (r!=lr) {
+  for (int i=0; i<result.num; ++i) {
+    r = result.buf[i] & cat_mask;
+    if (r!=lr) { // TODO: not necessary, entries are unique due to masking
       n++;
       // are we still below the offset?
       if (n<=outstart) continue;
       // output file      
       lr=r;
-      resultQueue(qi, fbuf[0][i]);
+      resultQueue(qi, result.buf[i]);
       // are we at the end of the output window?
       if (n>=outend) break;
     }
@@ -314,7 +303,7 @@ void traverse(int qi, resultList &result) {
   resultFlush(qi);
 
   // send the (exact) size of the complete result set
-  resultPrintf(qi, "OUTOF %d", fnum[0]); 
+  resultPrintf(qi, "OUTOF %d", result.num); 
 }
 
 void notin(int qi) {
@@ -328,23 +317,17 @@ void notin(int qi) {
 
   // sort both and subtract then
   fprintf(stderr,"using sort strategy.\n");
-  qsort(fbuf[0], fnum[0], sizeof **fbuf, compare);
-  qsort(fbuf[1], fnum[1], sizeof **fbuf, compare);
-/*
-  1 2
-  3 3
-  4 5
-  8 8
-  9 
-*/
+
+  result[0].sort();
+  result[1].sort();
 
   // perform subtraction
   int i0=0, i1=0;
   tree_type r, lr;
-  result_type *j0 = fbuf[0], 
-              *j1 = fbuf[1];
-  result_type *f0 = &(fbuf[0][fnum[0]]), 
-              *f1 = &(fbuf[1][fnum[1]]);
+  result_type *j0 = result[0].buf, 
+              *j1 = result[1].buf;
+  result_type *f0 = result[0].tail(), 
+              *f1 = result[1].tail();
 
   queue[qi].status = WS_STREAMING;
   do {
@@ -400,8 +383,9 @@ void notin(int qi) {
   resultFlush(qi);
 }
 
-void intersect(int qi) {
+void intersect(int qi, resultList &rl0, resultList &rl1) {
   int cid[2] = {queue[qi].c1, queue[qi].c2};
+  resultList result[] = { rl0, rl1 };
   int n = 0; // number of current output item
 
   int outstart = queue[qi].o;
@@ -410,35 +394,38 @@ void intersect(int qi) {
   onion_websocket *ws = queue[qi].ws;
 
   // was one of the results empty?
-  if (fnum[0]==0 || fnum[1]==0) {
+  if (result[0].num==0 || result[1].num==0) {
     resultPrintf(qi, "OUTOF %d", 0); 
     return;
   }
 
   // otherwise decide on an intersection strategy
-  if (fnum[0]>1000000 || fnum[1]>1000000) {
+  if (result[0].num>1000000 || result[1].num>1000000) {
     fprintf(stderr,"using bsearch strategy.\n");
     // sort the smaller and bsearch on it
     int small, large;
-    if (fnum[0] < fnum[1]) {
+    if (result[0].num < result[1].num) {
       small=0; large=1; 
     } else {
       small=1; large=0; 
     }
-    qsort(fbuf[small], fnum[small], sizeof **fbuf, compare);
+    
+    result[small].sort();
     // since a breadth first search is used on the search results the low depth results come first in the large results (resulting in the correct minimal depth metric)
 
     queue[qi].status = WS_STREAMING;
     int i;
     tree_type r;
-    result_type *j0, *j1, *j, *end=&(fbuf[small][fnum[small]+1]);
-    for (i=0; i<fnum[large]; ++i) {
-      j = (result_type*)bsearch((void*)&(fbuf[large][i]), fbuf[small], fnum[small], sizeof **fbuf, compare);
+    result_type *j0, *j1, *j, *end=result[small].tail(); //&(fbuf[small][fnum[small]+1]); WHY +1?
+    for (i=0; i<result[large].num; ++i) {
+      j = (result_type*)bsearch((void*)&(result[large].buf[i]), result[small].buf, result[small].num, sizeof(result_type), compare);
       if (j) {
+        // TODO: mindepth search is not necessary anymore, because results are unique and minimal due to masking
+
         // remove this match from the small result set (cast result_type* to tree_type* before dereferencing to only compare the first 32bit)
         // and find minimum depth value. Note: we can only take the depth of the smaller result set into account here!!
         result_type mindepthresult = *j;
-        j0=j-1; while(j0>fbuf[small] && *(tree_type*)j==*(tree_type*)j0) {
+        j0=j-1; while(j0>result[small].buf && *(tree_type*)j==*(tree_type*)j0) {
           if ((*j0 & depth_mask) < (mindepthresult & depth_mask) ) mindepthresult = *j0;
           j0--; 
         }
@@ -450,7 +437,7 @@ void intersect(int qi) {
         // are we at the output offset?
         if (n>=outstart) {
           //fprintf(stderr, "depth: %ld %ld  %d %d\n", fbuf[large][i], mindepthresult, (fbuf[large][i] & depth_mask)>>depth_shift, (mindepthresult & depth_mask)>>depth_shift);
-          resultQueue(qi, (fbuf[large][i] & depth_mask) + mindepthresult ); // output result with mindepth plus depth in the large category
+          resultQueue(qi, (result[large].buf[i] & depth_mask) + mindepthresult ); // output result with mindepth plus depth in the large category
         }
         n++;
         if (n>=outend) break;
@@ -458,7 +445,7 @@ void intersect(int qi) {
         // fill in from the entry before or after (if this was the last entry break out of the loop)
         result_type rr;
         if (j1<end) rr = *j1;
-        else if (j0>=fbuf[small]) rr = *j0;
+        else if (j0>=result[small].buf) rr = *j0;
         else break;
 
         j1--;
@@ -469,20 +456,20 @@ void intersect(int qi) {
     resultFlush(qi);
 
     // send the (estimated) size of the complete result set
-    int est = n + int( double(n)/double(i+1) * double(fnum[large]+1) );
+    int est = n + int( double(n)/double(i+1) * double(result[large].num+1) );
     resultPrintf(qi, "OUTOF %d", est); 
   } else {
     // sort both and intersect then
     fprintf(stderr,"using sort strategy.\n");
-    qsort(fbuf[0], fnum[0], sizeof **fbuf, compare);
-    qsort(fbuf[1], fnum[1], sizeof **fbuf, compare);
+    result[0].sort();
+    result[1].sort();
 
     // perform intersection
     queue[qi].status = WS_STREAMING;
-    result_type *j0 = fbuf[0], 
-                *j1 = fbuf[1];
-    result_type *f0 = &(fbuf[0][fnum[0]]), 
-                *f1 = &(fbuf[1][fnum[1]]);
+    result_type *j0 = result[0].buf, 
+                *j1 = result[1].buf;
+    result_type *f0 = result[0].tail(),
+                *f1 = result[1].tail(); 
     tree_type r, lr=-1;
     result_type m0, m1;
     do {
@@ -672,7 +659,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
         case WS_PREPROCESS :
         case WS_COMPUTING :
           // send intermediate result sizes
-          onion_websocket_printf(ws, "WORKING %d %d", fnum[0], fnum[1]);  
+          onion_websocket_printf(ws, "WORKING %d %d", result[0].num, result[1].num);  
           break;
       }
       // don't do anything if status is WS_STREAMING, the compute task is sending data
@@ -725,21 +712,20 @@ void *computeThread( void *d ) {
         //tagCat(queue[i].c1, i, 0);
       } else {
         // boolean operations (AND, LIST, NOTIN)
-        fnum[0] = 0;
-        fnum[1] = 0;
+        result[0].num = 0;
+        result[1].num = 0;
         queue[i].status = WS_PREPROCESS;
 
         // generate intermediate results
         int cid[2]   = {queue[i].c1, queue[i].c2};
         int depth[2] = {queue[i].d1, queue[i].d2};
-        for (int j=0; j<((cid[0]!=cid[1])?2:1); ++j) {
+        for (int j=0; j<((cid[0]!=cid[1] && cid[1]>=0)?2:1); ++j) {
           // clear visitation mask
           memset(mask,0,maxcat * sizeof *mask);
           
           // fetch files through deep traversal
-          resbuf=j;
-          fetchFiles(cid[j],depth[j]);
-          fprintf(stderr,"fnum(%d) %d\n", cid[j], fnum[j]);
+          fetchFiles(cid[j], depth[j], result[j]);
+          fprintf(stderr,"fnum(%d) %d\n", cid[j], result[j].num);
 
           // check results
           /*for (int k=0; k<fnum[j]; ++k) {
@@ -753,13 +739,16 @@ void *computeThread( void *d ) {
 
         switch (queue[i].type) {
           case WT_TRAVERSE :
-            traverse(i);
+            traverse(i, result[0]);
             break;
           case WT_NOTIN :
             notin(i);
             break;
           case WT_INTERSECT :
-            intersect(i);
+            if (cid[1]==-1)
+              intersect(i, result[0], goodImages);
+            else
+              intersect(i, result[0], result[1]);
             break;
         }
       }
@@ -803,10 +792,6 @@ int main(int argc, char *argv[]) {
   snprintf(fname, buflen, "%s/fastcci.tree", argv[2]);
   readFile(fname, tree);
 
-  // intermediate return buffers
-  fbuf[0]=(result_type*)malloc(fmax[0] * sizeof **fbuf);
-  fbuf[1]=(result_type*)malloc(fmax[1] * sizeof **fbuf);
-
   // ring buffer for breadth first
   rbInit(rb);
 
@@ -844,7 +829,5 @@ int main(int argc, char *argv[]) {
   free(cat);
   free(tree);
   free(mask);
-  free(fbuf[0]);
-  free(fbuf[1]);
   return 0;
 }
