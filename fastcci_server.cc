@@ -285,7 +285,7 @@ void traverse(int qi, resultList &result) {
   // output selected subset
   queue[qi].status = WS_STREAMING;
   if (outend>result.num) outend=result.num;
-  for (int i=outstart; i<outend; ++i )
+  for (int i=outstart; i<outend; ++i)
     resultQueue(qi, result.buf[i]);
   resultFlush(qi);
 
@@ -293,7 +293,10 @@ void traverse(int qi, resultList &result) {
   resultPrintf(qi, "OUTOF %d", result.num); 
 }
 
-void notin(int qi) {
+//
+// all images in result that are not flagged in the mask
+//
+void notin(int qi, resultList &result) {
   int cid[2] = {queue[qi].c1, queue[qi].c2};
   int n = 0; // number of current output item
 
@@ -302,68 +305,23 @@ void notin(int qi) {
   onion_response *res = queue[qi].res;
   onion_websocket *ws = queue[qi].ws;
 
-  // sort both and subtract then
-  fprintf(stderr,"using sort strategy.\n");
-
-  result[0].sort();
-  result[1].sort();
+  // No sorting, show least depth first, use mask for NOT test
+  fprintf(stderr,"using mask strategy.\n");
 
   // perform subtraction
-  int i0=0, i1=0;
-  tree_type r, lr;
-  result_type *j0 = result[0].buf, 
-              *j1 = result[1].buf;
-  result_type *f0 = result[0].tail(), 
-              *f1 = result[1].tail();
-
   queue[qi].status = WS_STREAMING;
-  do {
-    //if (fbuf[0][i0] < fbuf[1][i1]) {
-    if ( *(tree_type*)j0 > *(tree_type*)j1 ) {
-      r = *(tree_type*)j0; // = fbuf[0][i0] & cat_mask;
-      
-      if (r!=lr) {
-        // are we at the output offset?
-        //if (n>=outstart) resultQueue(qi, fbuf[0][i0]);
-        if (n>=outstart) resultQueue(qi, *j0);
-        n++;
-        if (n>=outend) break;
-      }
+  result_type r;
+  for (int i=0; i<result.num; ++i) {
+    r = result.buf[i] & cat_mask;
 
-      lr = r;
-
-      // advance i0 until we are at a different entry
-      for(; j0<f0 && *(tree_type*)j0==r; j0++);
-    } else if (*(tree_type*)j0 < *(tree_type*)j1) { //    fbuf[0][i0] > fbuf[1][i1]) { 
-      r = *(tree_type*)j1; // = fbuf[1][i1] & cat_mask;
-
-      // advance i1 until we are at a different entry
-      //for(; i1<fnum[1] && (fbuf[1][i1] & cat_mask)==r; i1++);
-      for(; j1<f1 && *(tree_type*)j1==r; j1++);
-    } else { // equal
-      // advance i0 until we are at a different entry
-      r = *(tree_type*)j0;
-      for(; j0<f0 && *(tree_type*)j0==r; j0++);
-
-      // advance i1 until we are at a different entry
-      r = *(tree_type*)j1;
-      for(; j1<f1 && *(tree_type*)j1==r; j1++);
-    }
-  } while (j0<f0 && j1<f1);
-
-  // dump the remainder of c1
-  if (j0<f0 && j1>=f1) {
-    for (;j0<f0; ++j0) {
-      r = *(tree_type*)j0;
-      
-      if (r!=lr) {
-        // are we at the output offset?
-        if (n>=outstart) resultQueue(qi, *j0);
-        n++;
-        if (n>=outend) break;
-      }
-
-      lr = r;
+    if (mask[r]==0) {
+      n++;
+      // are we still below the offset?
+      if (n<=outstart) continue;
+      // output file      
+      resultQueue(qi, result.buf[i]);
+      // are we at the end of the output window?
+      if (n>=outend) break;
     }
   }
 
@@ -729,7 +687,7 @@ void *computeThread( void *d ) {
             traverse(i, result[0]);
             break;
           case WT_NOTIN :
-            notin(i);
+            notin(i, result[0]);
             break;
           case WT_INTERSECT :
             if (cid[1]==-1)
