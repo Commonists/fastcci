@@ -144,6 +144,7 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
   rbPush(rb,id);
 
   result_type r, d,e, i;
+  unsigned char f;
   int c, len;
   while (!rbEmpty(rb)) {
     r = rbPop(rb);
@@ -179,11 +180,14 @@ void fetchFiles(tree_type id, int depth, resultList &result) {
     result.grow(len);
     result_type *dst = result.tail(), *old = dst;
     tree_type   *src = &(tree[c]);
+    d = e >> depth_shift;
+    f = d<255 ? d : 255;
+    if (f==0) exit(1); // should never happen!!
     while (len--) {
       r =  *src++; 
       if (mask[r]==0) {
         *dst++ = (r | d);
-        mask[r] = 2;
+        mask[r] = f;
       }
     }
     result.num += dst-old;
@@ -785,6 +789,12 @@ int main(int argc, char *argv[]) {
 
   // visitation mask buffer (could be 1/8 by using a bitmask)
   mask = (unsigned char*)malloc(maxcat * sizeof *mask);
+
+  // union of FP/QI/VI
+  memset(mask,0,maxcat * sizeof *mask);
+  fetchFiles(3943817, 0, goodImages); // FPs
+  fetchFiles(3618826, 0, goodImages); // QIs
+  fetchFiles(3862724, 0, goodImages); // VIs
 
   // parent category buffer for shortest path finding
   parent = (tree_type*)malloc(maxcat * sizeof *parent);
