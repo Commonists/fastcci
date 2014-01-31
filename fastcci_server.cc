@@ -13,7 +13,31 @@ int fmax[2]={100000,100000}, fnum[2];
 result_type *fbuf[2] = {0};
 int maxcat; 
 tree_type *cat, *tree, *parent; 
-char *mask;
+unsigned char *mask;
+
+// new result data structure
+struct resultList {
+  int max, num;
+  result_type *buf;
+  resultList() : max(100000), num(0) {
+  }
+
+  // pointer to element after the last result
+  result_type* tail() { return &(buf[num]); }  
+
+  // grow buffer to hold at least len more items
+  void grow(int len) {
+    if (num+len > max) {
+      while (num+len > max) max *= 2;
+      buf = (result_type*)realloc(buf, max * sizeof *buf);
+    }
+  }
+
+  // sort result list
+  void sort() {
+    qsort(buf, num, sizeof *buf, compare);
+  }
+} result[2], goodImages;
 
 // breadth first search ringbuffer
 struct ringBuffer rb;
@@ -111,7 +135,7 @@ void resultQueue(int i, result_type item) {
  * in a breadth first search up to depth 'depth'
  * if 'depth' id negative treat it as infinity
  */
-void fetchFiles(tree_type id, int depth) {
+void fetchFiles(tree_type id, int depth, resultList &result) {
   // clear ring buffer
   rbClear(rb);
 
@@ -159,7 +183,10 @@ void fetchFiles(tree_type id, int depth) {
       while (fnum[resbuf]+len > fmax[resbuf]) fmax[resbuf] *= 2;
       fbuf[resbuf] = (result_type*)realloc(fbuf[resbuf], fmax[resbuf] * sizeof **fbuf);
     }
+    result.grow(len);
+
     result_type *dst = &(fbuf[resbuf][fnum[resbuf]]), *old = dst;
+    //result_type *dst = result.tail(), *old = dst;
     tree_type   *src = &(tree[c]);
     while (len--) {
       r =  *src++; 
@@ -170,48 +197,11 @@ void fetchFiles(tree_type id, int depth) {
       }
     }
     fnum[resbuf] += dst-old;
+    // result.num += dst-old;
   }
 }
 
-// recursively tag categories to find a path between Category -> File  or  Category -> Category
-int history[maxdepth];
-bool found;
-void tagCat(int id, int qi, int depth) {
-  // record path
-  if (depth==maxdepth || mask[id]!=0 || found) return;
-  history[depth] = id;
 
-  int c = cat[id], cend = tree[c], cend2 = tree[c+1];
-  bool foundPath = false;
-  if (id==queue[qi].c2) foundPath=true;
-  // check if c2 is a file (cat[c2]<0)
-  else if (cat[queue[qi].c2]<0) {
-    // if so, search the files in this cat
-    for (int i=cend; i<cend2; ++i) {
-      if (tree[i]==queue[qi].c2) {
-        foundPath=true;
-        break;
-      }
-    }
-  }
-
-  // found the target category
-  if (foundPath) {
-    for (int i=0; i<=depth; ++i)
-      resultQueue(qi, history[i]);
-    resultFlush(qi);
-    found = true;
-    return;
-  }
-
-  // mark as visited
-  mask[id]=1;
-  c += 2;
-  while (c<cend) {
-    tagCat(tree[c], qi, depth+1);
-    c++; 
-  }
-}
 // iteratively do a breadth first path search
 void tagCatNew(tree_type sid, int qi, int maxDepth) {
   // clear ring buffer
@@ -293,7 +283,7 @@ void tagCatNew(tree_type sid, int qi, int maxDepth) {
   }
 }
 
-void traverse(int qi) {
+void traverse(int qi, resultList &result) {
   int n = 0; // number of current output item
 
   int outstart = queue[qi].o;
@@ -303,6 +293,7 @@ void traverse(int qi) {
 
   // sort
   qsort(fbuf[0], fnum[0], sizeof **fbuf, compare);
+  // result.sort();
 
   // output unique files
   queue[qi].status = WS_STREAMING;
@@ -729,7 +720,7 @@ void *computeThread( void *d ) {
 
       if (queue[i].type==WT_PATH) {
         // path finding
-        memset(mask,0,maxcat);
+        memset(mask,0,maxcat * sizeof *mask);
         tagCatNew(queue[i].c1, i, queue[i].d1);
         //tagCat(queue[i].c1, i, 0);
       } else {
@@ -743,7 +734,7 @@ void *computeThread( void *d ) {
         int depth[2] = {queue[i].d1, queue[i].d2};
         for (int j=0; j<((cid[0]!=cid[1])?2:1); ++j) {
           // clear visitation mask
-          memset(mask,0,maxcat);
+          memset(mask,0,maxcat * sizeof *mask);
           
           // fetch files through deep traversal
           resbuf=j;
@@ -804,7 +795,7 @@ int main(int argc, char *argv[]) {
   maxcat /= sizeof(tree_type);
 
   // visitation mask buffer (could be 1/8 by using a bitmask)
-  mask = (char*)malloc(maxcat);
+  mask = (unsigned char*)malloc(maxcat * sizeof *mask);
 
   // parent category buffer for shortest path finding
   parent = (tree_type*)malloc(maxcat * sizeof *parent);
