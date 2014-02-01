@@ -186,6 +186,7 @@ void fetchFiles(tree_type id, int depth, resultList *r1) {
     result_type *dst = r1->tail(), *old = dst;
     tree_type   *src = &(tree[c]);
     f = d<254 ? (d+1) : 255;
+    d = d<<depth_shift;
     while (len--) {
       r =  (*src++); 
       if (r1->mask[r & cat_mask]==0) {
@@ -351,7 +352,7 @@ void intersect(int qi, resultList *r1, resultList *r2) {
   onion_websocket *ws = queue[qi].ws;
 
   // was one of the results empty?
-  if (r1->num==0 || r2->num==0) {
+  if (r2->num==0) {
     resultPrintf(qi, "OUTOF %d", 0); 
     return;
   }
@@ -368,10 +369,53 @@ void intersect(int qi, resultList *r1, resultList *r2) {
       // are we still below the offset?
       if (n<=outstart) continue;
       // output file      
-      resultQueue(qi, r1->buf[i] + (m<<depth_shift), r2->tags==NULL ? goodImages->tags[r] : r2->tags[r] );
+      resultQueue(qi, r1->buf[i] + ((m-1)<<depth_shift), r2->tags==NULL ? goodImages->tags[r] : r2->tags[r] );
       // are we at the end of the output window?
       if (n>=outend) break;
     }
+  }
+
+  resultFlush(qi);
+}
+
+//
+// all FPs, QIs, VIs in c1 in that order
+//
+void findFQV(int qi, resultList *r1) {
+  int n = 0; // number of current output item
+
+  int outstart = queue[qi].o;
+  int outend   = outstart + queue[qi].s;
+  onion_response *res = queue[qi].res;
+  onion_websocket *ws = queue[qi].ws;
+
+  // was one of the results empty?
+  if (r1->num==0) {
+    resultPrintf(qi, "OUTOF %d", 0); 
+    return;
+  }
+
+  // perform intersection
+  queue[qi].status = WS_STREAMING;
+  result_type r, m;
+
+  // loop over tags
+  for (unsigned char k=1; k<=3; ++k ) {
+    // loop over c1 images
+    for (int i=0; i<r1->num; ++i) {
+      r = r1->buf[i] & cat_mask;
+      m = goodImages->mask[r];
+      if (m!=0 && k==goodImages->tags[r]) {
+        n++;
+        // are we still below the offset?
+        if (n<=outstart) continue;
+        // output file      
+        resultQueue(qi, r1->buf[i] + ((m-1)<<depth_shift), goodImages->tags[r] );
+        // are we at the end of the output window?
+        if (n>=outend) break;
+      }
+    }
+    if (n>=outend) break;
   }
 
   resultFlush(qi);
@@ -620,7 +664,7 @@ void *computeThread( void *d ) {
             break;
           case WT_INTERSECT :
             if (cid[1]==-1)
-              intersect(i, result[0], goodImages);
+              findFQV(i, result[0]);
             else
               intersect(i, result[0], result[1]);
             break;
@@ -692,6 +736,7 @@ int main(int argc, char *argv[]) {
   for (int i=3; i>0; --i) {
     printf("goodImages[%d]\n", i);
     result[0]->clear();
+    result[0]->num = 0;
     fetchFiles(goodCats[i-1], 0, result[0]);
     for (int j =0; j<result[0]->num; j++) {
       r = result[0]->buf[j] & cat_mask;
@@ -699,6 +744,7 @@ int main(int argc, char *argv[]) {
       goodImages->tags[r] = i;
     }
   }
+  goodImages->num = -1;
 
   // start webserver
   onion *o=onion_new(O_THREADED);
