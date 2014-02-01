@@ -478,38 +478,32 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
   const char* aparam = onion_request_get_query(req, "a");
 
-  if (queue[i].c1==queue[i].c2)
-    queue[i].type = WT_TRAVERSE;
-  else {
-    queue[i].type = WT_INTERSECT;
-
-    if (aparam != NULL) {
-      if (strcmp(aparam,"and")==0)
-        queue[i].type = WT_INTERSECT;
-      else if (strcmp(aparam,"not")==0)
-        queue[i].type = WT_NOTIN;
-      else if (strcmp(aparam,"list")==0)
-        queue[i].type = WT_TRAVERSE;
-      else if (strcmp(aparam,"path")==0) {
-        queue[i].type = WT_PATH;
-        if (queue[i].c1==queue[i].c2) return OCS_INTERNAL_ERROR;
-      }
-      else
-        return OCS_INTERNAL_ERROR;
+  queue[i].type = WT_INTERSECT;
+  if (aparam != NULL) {
+    if (strcmp(aparam,"and")==0)
+      queue[i].type = WT_INTERSECT;
+    else if (strcmp(aparam,"not")==0)
+      queue[i].type = WT_NOTIN;
+    else if (strcmp(aparam,"fqv")==0)
+      queue[i].type = WT_FQV;
+    else if (strcmp(aparam,"list")==0)
+      queue[i].type = WT_TRAVERSE;
+    else if (strcmp(aparam,"path")==0) {
+      queue[i].type = WT_PATH;
+      if (queue[i].c1==queue[i].c2) return OCS_INTERNAL_ERROR;
     }
+    else
+      return OCS_INTERNAL_ERROR;
   }
 
   // check if invalid ids were specified
-  if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || queue[i].c1<0 ) return OCS_INTERNAL_ERROR;
-  // allow c2=-1 for intersect!
-  if (queue[i].c2<-1 || (queue[i].c2<0 && queue[i].type!=WT_INTERSECT) ) return OCS_INTERNAL_ERROR;
+  if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || queue[i].c1<0 || queue[i].c2<0 ) return OCS_INTERNAL_ERROR;
 
   // check if both c params are categories unless it is a path request
   if (isFile(queue[i].c1) || (isFile(queue[i].c2) && queue[i].type!=WT_PATH) ) return OCS_INTERNAL_ERROR;
 
   // log request
-  if (queue[i].c1==queue[i].c2) aparam="list";
-  else if (aparam==NULL) aparam="and";
+  if (aparam==NULL) aparam="and";
   fprintf(stderr, "Request [%ld %d]: a=%s c1=%d(%d) c2=%d(%d)\n", time(NULL), bItem-aItem, aparam, queue[i].c1, queue[i].d1, queue[i].c2, queue[i].d2);
 
   // attempt to open a websocket connection
@@ -643,7 +637,9 @@ void *computeThread( void *d ) {
         // generate intermediate results
         int cid[2]   = {queue[i].c1, queue[i].c2};
         int depth[2] = {queue[i].d1, queue[i].d2};
-        for (int j=0; j<((cid[0]!=cid[1] && cid[1]>=0)?2:1); ++j) {
+        // number of result lists needed
+        int nr = (queue[i].type==WT_TRAVERSE || queue[i].type==WT_FQV) ? 1 : 2;
+        for (int j=0; j<nr; ++j) {
           // clear visitation mask
           result[j]->clear();
           
@@ -659,14 +655,15 @@ void *computeThread( void *d ) {
           case WT_TRAVERSE :
             traverse(i, result[0]);
             break;
+          case WT_FQV :
+            findFQV(i, result[0]);
+            break;
+
           case WT_NOTIN :
             notin(i, result[0], result[1]);
             break;
           case WT_INTERSECT :
-            if (cid[1]==-1)
-              findFQV(i, result[0]);
-            else
-              intersect(i, result[0], result[1]);
+            intersect(i, result[0], result[1]);
             break;
         }
       }

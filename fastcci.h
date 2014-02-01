@@ -24,7 +24,7 @@ const result_type cat_mask   = 0x7FFFFFFF;
 enum wiConn { WC_XHR, WC_SOCKET, WC_JS, WC_JS_CONT };
 
 // work item type
-enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN, WT_PATH };
+enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN, WT_PATH, WT_FQV };
 
 // work item status type
 enum wiStatus { WS_WAITING, WS_PREPROCESS, WS_COMPUTING, WS_STREAMING, WS_DONE };
