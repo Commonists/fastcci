@@ -15,8 +15,8 @@ tree_type *cat, *tree, *parent;
 struct resultList {
   int max, num;
   result_type *buf;
-  unsigned char *mask;
-  resultList(int initialSize = 1024*1024) : max(initialSize), num(0) {
+  unsigned char *mask, *tags;
+  resultList(int initialSize = 1024*1024) : max(initialSize), num(0), tags(NULL) {
     buf = (result_type*)malloc(max * sizeof *buf);
     mask = (unsigned char*)malloc(maxcat * sizeof *mask);
   }
@@ -37,7 +37,12 @@ struct resultList {
     memset(mask,0,maxcat * sizeof *mask);
   }
 
-  // sort result list
+  // tags list for special union groups (to identify FP/QI/VI for example)
+  void addTags() {
+    tags = (unsigned char*)calloc(maxcat, sizeof(*tags));
+  }
+
+  // sort result list (unused for output)
   void sort() {
     qsort(buf, num, sizeof *buf, compare);
   }
@@ -64,7 +69,7 @@ inline bool isFile(int i) {
 }
 
 // buffering of up to 50 search results (the amount we can safely API query)
-const int resmaxqueue = 50, resmaxbuf = 32*resmaxqueue;
+const int resmaxqueue = 50, resmaxbuf = 64*resmaxqueue;
 char rescombuf[resmaxbuf];
 int resnumqueue=0, residx=0;
 ssize_t resultPrintf(int i, const char *fmt, ...) {
@@ -128,9 +133,9 @@ void resultFlush(int i) {
   resultPrintf(i, "RESULT %s", rescombuf);
   resnumqueue=0; residx=0;
 }
-void resultQueue(int i, result_type item) {
+void resultQueue(int i, result_type item, unsigned char tag) {
   // TODO check for truncation (but what then?!)
-  residx += snprintf(&(rescombuf[residx]), resmaxbuf-residx, "%d,%d|", int(item & cat_mask), int((item & depth_mask)>>depth_shift));
+  residx += snprintf(&(rescombuf[residx]), resmaxbuf-residx, "%d,%d,%d|", int(item & cat_mask), int((item & depth_mask)>>depth_shift), tag);
 
   // queued enough values?
   if (++resnumqueue == resmaxqueue) resultFlush(i);
@@ -270,7 +275,7 @@ void tagCat(tree_type sid, int qi, int maxDepth, resultList *r1) {
     } 
     int len = i;
     // output in reverse to get the forward chain
-    while (i--) resultQueue(qi, history[i] + (result_type(len-i)<<depth_shift));
+    while (i--) resultQueue(qi, history[i] + (result_type(len-i)<<depth_shift), 0);
     resultFlush(qi);
   } else {
     resultPrintf(qi, "NOPATH"); 
@@ -289,8 +294,11 @@ void traverse(int qi, resultList *r1) {
   // output selected subset
   queue[qi].status = WS_STREAMING;
   if (outend>r1->num) outend=r1->num;
-  for (int i=outstart; i<outend; ++i)
-    resultQueue(qi, r1->buf[i]);
+  result_type r;
+  for (int i=outstart; i<outend; ++i) {
+    r = r1->buf[i] & cat_mask;
+    resultQueue(qi, r1->buf[i], r1->tags==NULL ? goodImages->tags[r] : r1->tags[r]);
+  }
   resultFlush(qi);
 
   // send the (exact) size of the complete result set
@@ -322,7 +330,7 @@ void notin(int qi, resultList *r1, resultList *r2) {
       // are we still below the offset?
       if (n<=outstart) continue;
       // output file      
-      resultQueue(qi, r1->buf[i]);
+      resultQueue(qi, r1->buf[i], r1->tags==NULL ? goodImages->tags[r] : r1->tags[r]);
       // are we at the end of the output window?
       if (n>=outend) break;
     }
@@ -351,6 +359,7 @@ void intersect(int qi, resultList *r1, resultList *r2) {
   // perform intersection
   queue[qi].status = WS_STREAMING;
   result_type r, m;
+
   for (int i=0; i<r1->num; ++i) {
     r = r1->buf[i] & cat_mask;
     m = r2->mask[r];
@@ -359,7 +368,7 @@ void intersect(int qi, resultList *r1, resultList *r2) {
       // are we still below the offset?
       if (n<=outstart) continue;
       // output file      
-      resultQueue(qi, r1->buf[i] + (m<<depth_shift) );
+      resultQueue(qi, r1->buf[i] + (m<<depth_shift), r2->tags==NULL ? goodImages->tags[r] : r2->tags[r] );
       // are we at the end of the output window?
       if (n>=outend) break;
     }
@@ -368,42 +377,6 @@ void intersect(int qi, resultList *r1, resultList *r2) {
   resultFlush(qi);
 }
 
-//
-// output images that are in a union group (using the union group mask to flag images)
-//
-void intersectGroup(int qi, resultList *r1, resultList *ug) {
-  int n = 0; // number of current output item
-
-  int outstart = queue[qi].o;
-  int outend   = outstart + queue[qi].s;
-  onion_response *res = queue[qi].res;
-  onion_websocket *ws = queue[qi].ws;
-
-  // was one of the results empty?
-  if (r1->num==0 || ug->num==0) {
-    resultPrintf(qi, "OUTOF %d", 0); 
-    return;
-  }
-
-  // perform intersection
-  queue[qi].status = WS_STREAMING;
-  result_type r, m;
-  for (int i=0; i<r1->num; ++i) {
-    r = r1->buf[i] & cat_mask;
-    m = ug->mask[r];
-    if (m!=0) {
-      n++;
-      // are we still below the offset?
-      if (n<=outstart) continue;
-      // output file      
-      resultQueue( qi, r1->buf[i] + (m<<(depth_shift+8)) ); // todo better tagging
-      // are we at the end of the output window?
-      if (n>=outend) break;
-    }
-  }
-
-  resultFlush(qi);
-}
 
 onion_connection_status handleStatus(void *d, onion_request *req, onion_response *res)
 {
@@ -646,7 +619,7 @@ void *computeThread( void *d ) {
             break;
           case WT_INTERSECT :
             if (cid[1]==-1)
-              intersectGroup(i, result[0], goodImages);
+              intersect(i, result[0], goodImages);
             else
               intersect(i, result[0], result[1]);
             break;
@@ -691,11 +664,15 @@ int main(int argc, char *argv[]) {
   // union of FP/QI/VI
   int goodCats[] = { 3943817/*FP*/, 3618826/*QI*/, 3862724/*VI*/ };
   goodImages->clear();
+  goodImages->addTags();
+  result_type r;
   for (int i=3; i>0; --i) {
     result[0]->clear();
     fetchFiles(goodCats[i-1], 0, result[0]);
     for (int j =0; j<result[0]->num; j++) {
-      goodImages->mask[(result[0]->buf[j]) & cat_mask] = i;
+      r = result[0]->buf[j] & cat_mask;
+      goodImages->mask[r] = result[0]->mask[r];
+      goodImages->tags[r] = i;
     }
   }
 
