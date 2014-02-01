@@ -187,8 +187,8 @@ void fetchFiles(tree_type id, int depth, resultList *r1) {
     tree_type   *src = &(tree[c]);
     f = d<254 ? (d+1) : 255;
     while (len--) {
-      r =  *src++; 
-      if (r1->mask[r]==0) {
+      r =  (*src++); 
+      if (r1->mask[r & cat_mask]==0) {
         *dst++ = (r | d);
         r1->mask[r] = f;
       }
@@ -650,6 +650,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // ring buffer for breadth first
+  rbInit(rb);
+
   const int buflen = 1000;
   char fname[buflen];
 
@@ -662,29 +665,11 @@ int main(int argc, char *argv[]) {
   result[1] = new resultList(1024*1024);
   goodImages = new resultList(512);
 
-  // union of FP/QI/VI
-  int goodCats[] = { 3943817/*FP*/, 3618826/*QI*/, 3862724/*VI*/ };
-  goodImages->clear();
-  goodImages->addTags();
-  result_type r;
-  for (int i=3; i>0; --i) {
-    result[0]->clear();
-    fetchFiles(goodCats[i-1], 0, result[0]);
-    for (int j =0; j<result[0]->num; j++) {
-      r = result[0]->buf[j] & cat_mask;
-      goodImages->mask[r] = result[0]->mask[r];
-      goodImages->tags[r] = i;
-    }
-  }
-
   // parent category buffer for shortest path finding
   parent = (tree_type*)malloc(maxcat * sizeof *parent);
 
   snprintf(fname, buflen, "%s/fastcci.tree", argv[2]);
   readFile(fname, tree);
-
-  // ring buffer for breadth first
-  rbInit(rb);
 
   // thread properties
   pthread_attr_t attr;
@@ -698,6 +683,22 @@ int main(int argc, char *argv[]) {
   // setup compute thread
   pthread_t notify_thread;
   if (pthread_create(&notify_thread, &attr, notifyThread, NULL)) return 1;
+
+  // union of FP/QI/VI
+  int goodCats[] = { 3943817/*FP*/, 3618826/*QI*/, 3862724/*VI*/ };
+  goodImages->clear();
+  goodImages->addTags();
+  result_type r;
+  for (int i=3; i>0; --i) {
+    printf("goodImages[%d]\n", i);
+    result[0]->clear();
+    fetchFiles(goodCats[i-1], 0, result[0]);
+    for (int j =0; j<result[0]->num; j++) {
+      r = result[0]->buf[j] & cat_mask;
+      goodImages->mask[r] = result[0]->mask[r];
+      goodImages->tags[r] = i;
+    }
+  }
 
   // start webserver
   onion *o=onion_new(O_THREADED);
