@@ -54,6 +54,7 @@ For backwards compatibility with browsers that do not properly support cross-dom
   * ```and``` Perform the intersection between category ```c1``` and category ```c2``` (default action)
   * ```not``` Fetch fils that are in category ```c1``` but not in category ```c2```
   * ```list``` List all files in and below category ```c1```
+  * ```fqv``` List all FPs, QIs, and VIs files (in that order) in and below category ```c1```
   * ```path``` Find the subcategory path from category ```c1``` to file or category ```c2```
 
 
