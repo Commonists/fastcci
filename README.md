@@ -63,11 +63,11 @@ The server performs some sanity checking on the query parameters to make sure th
 
 The response is delivered in a simple text format with multiple lines. Each line starts with a keyword and may be followed by data. The keywords are:
 
-# ```RESULT``` followed by a ```|``` separated list of  up to 50 integer triplets of the form ```pageId,depth,tag```. Each triplet stands for one image or category.
-# ```NOPATH``` indicates that no path from ```c1``` to ```c2``` in a ```a=path``` request was found.
-# ```OUTOF``` followed by an integer that is the number of total items in th the calculated result (rather than the number of returned items). This can be either an exact number (for ```a=list```) or an estimate (for ```a=and``` and ```a=not```).
-# ```QUEUED``` is the immediate acknowledgement that the server has queued the current request.
-# ```WAITING``` is sent to the client with one integer value representing the number of requests that are ahead in the queue and will be processed before the current request.
-# ```WORKING``` followed by two integers representing the current number of items found in  ```c1``` and ```c2```. This response item is sent to the client every 0.2s and shows the current state of the ongoing category traversal.
-# ```DONE``` indicates the end of the server transmission.
+* ```RESULT``` followed by a ```|``` separated list of  up to 50 integer triplets of the form ```pageId,depth,tag```. Each triplet stands for one image or category.
+* ```NOPATH``` indicates that no path from ```c1``` to ```c2``` in a ```a=path``` request was found.
+* ```OUTOF``` followed by an integer that is the number of total items in th the calculated result (rather than the number of returned items). This can be either an exact number (for ```a=list```) or an estimate (for ```a=and``` and ```a=not```).
+* ```QUEUED``` is the immediate acknowledgement that the server has queued the current request.
+* ```WAITING``` is sent to the client with one integer value representing the number of requests that are ahead in the queue and will be processed before the current request.
+* ```WORKING``` followed by two integers representing the current number of items found in  ```c1``` and ```c2```. This response item is sent to the client every 0.2s and shows the current state of the ongoing category traversal.
+* ```DONE``` indicates the end of the server transmission.
 
