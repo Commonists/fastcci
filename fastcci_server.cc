@@ -456,8 +456,9 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
   }
 
   // check if invalid ids were specified
-  if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || 
-      queue[i].c1<0 || queue[i].c2<0) return OCS_INTERNAL_ERROR;
+  if (queue[i].c1>=maxcat || queue[i].c2>=maxcat || queue[i].c1<0 ) return OCS_INTERNAL_ERROR;
+  // allow c2=-1 for intersect!
+  if (queue[i].c2<-1 || (queue[i].c2<0 && queue[i].type!=WT_INTERSECT) ) return OCS_INTERNAL_ERROR;
 
   // check if both c params are categories unless it is a path request
   if (isFile(queue[i].c1) || (isFile(queue[i].c2) && queue[i].type!=WT_PATH) ) return OCS_INTERNAL_ERROR;
