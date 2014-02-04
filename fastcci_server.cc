@@ -725,8 +725,13 @@ int main(int argc, char *argv[]) {
   pthread_t notify_thread;
   if (pthread_create(&notify_thread, &attr, notifyThread, NULL)) return 1;
 
-  // union of FP/QI/VI (cat,depth,tag)
-  int goodCats[][3] = { {3943817,0,1}/*FP*/, {5799448,1,1}/*WPFP*/, {3618826,0,2}/*QI*/, {3862724,0,3}/*VI*/ };
+  // precompute a union of Commons FPs, Wikipedia FPs, QIs, and VIs 
+  int goodCats[][3] = { 
+    {3943817,0,1}, // [[Category:Featured_pictures_on_Wikimedia_Commons]]     (depth 0)
+    {5799448,1,1}, // [[Category:Featured_pictures_on_Wikipedia_by_language]] (depth 1)
+    {3618826,0,2}, // [[Category:Quality_images]]                             (depth 0)
+    {4143367,0,3}  // [[Category:Valued_images_sorted_by_promotion_date]]     (depth 0)
+  };
   goodImages->clear();
   goodImages->addTags();
   result_type r;
