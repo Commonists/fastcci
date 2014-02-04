@@ -725,20 +725,20 @@ int main(int argc, char *argv[]) {
   pthread_t notify_thread;
   if (pthread_create(&notify_thread, &attr, notifyThread, NULL)) return 1;
 
-  // union of FP/QI/VI
-  int goodCats[] = { 3943817/*FP*/, 3618826/*QI*/, 3862724/*VI*/ };
+  // union of FP/QI/VI (cat,depth,tag)
+  int goodCats[][3] = { {3943817,0,1}/*FP*/, {5799448,1,1}/*WPFP*/, {3618826,0,2}/*QI*/, {3862724,0,3}/*VI*/ };
   goodImages->clear();
   goodImages->addTags();
   result_type r;
-  for (int i=3; i>0; --i) {
+  for (int i=4; i>0; --i) {
     printf("goodImages[%d]\n", i);
     result[0]->clear();
     result[0]->num = 0;
-    fetchFiles(goodCats[i-1], 0, result[0]);
+    fetchFiles(goodCats[i-1][0], goodCats[i-1][1], result[0]);
     for (int j =0; j<result[0]->num; j++) {
       r = result[0]->buf[j] & cat_mask;
       goodImages->mask[r] = result[0]->mask[r];
-      goodImages->tags[r] = i;
+      goodImages->tags[r] = goodCats[i-1][2];
     }
   }
   goodImages->num = -1;
