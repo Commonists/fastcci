@@ -323,7 +323,8 @@ void notin(int qi, resultList *r1, resultList *r2) {
   // perform subtraction
   queue[qi].status = WS_STREAMING;
   result_type r;
-  for (int i=0; i<r1->num; ++i) {
+  int i;
+  for (i=0; i<r1->num; ++i) {
     r = r1->buf[i] & cat_mask;
 
     if (r2->mask[r]==0) {
@@ -338,6 +339,13 @@ void notin(int qi, resultList *r1, resultList *r2) {
   }
 
   resultFlush(qi);
+
+  // did we make it all the way to the end of the result set?
+  if (i==r1->num) 
+    resultPrintf(qi, "OUTOF %d", n-outstart);
+  // otherwise make a crude guess based on the progress within result r1
+  else if(i>0)
+    resultPrintf(qi, "OUTOF %d", (queue[qi].s*r1->num)/i);
 }
 
 //
@@ -361,7 +369,8 @@ void intersect(int qi, resultList *r1, resultList *r2) {
   queue[qi].status = WS_STREAMING;
   result_type r, m;
 
-  for (int i=0; i<r1->num; ++i) {
+  int i;
+  for (i=0; i<r1->num; ++i) {
     r = r1->buf[i] & cat_mask;
     m = r2->mask[r];
     if (m!=0) {
@@ -376,6 +385,13 @@ void intersect(int qi, resultList *r1, resultList *r2) {
   }
 
   resultFlush(qi);
+
+  // did we make it all the way to the end of the result set?
+  if (i==r1->num) 
+    resultPrintf(qi, "OUTOF %d", n-outstart);
+  // otherwise make a crude guess based on the progress within result r1
+  else if(i>0)
+    resultPrintf(qi, "OUTOF %d", (queue[qi].s*r1->num)/i);
 }
 
 //
@@ -400,9 +416,11 @@ void findFQV(int qi, resultList *r1) {
   result_type r, m;
 
   // loop over tags
-  for (unsigned char k=1; k<=3; ++k ) {
+  unsigned char k;
+  int i;
+  for (k=1; k<=3; ++k ) {
     // loop over c1 images
-    for (int i=0; i<r1->num; ++i) {
+    for (i=0; i<r1->num; ++i) {
       r = r1->buf[i] & cat_mask;
       m = goodImages->mask[r];
       if (m!=0 && k==goodImages->tags[r]) {
@@ -419,6 +437,13 @@ void findFQV(int qi, resultList *r1) {
   }
 
   resultFlush(qi);
+
+  // did we make it all the way to the end of the result set?
+  if (k==4) 
+    resultPrintf(qi, "OUTOF %d", n-outstart);
+  // otherwise make a crude guess
+  else if (((k-1)*r1->num + i)>0)
+    resultPrintf(qi, "OUTOF %d", (queue[qi].s*r1->num*3) / ((k-1)*r1->num + i));
 }
 
 
