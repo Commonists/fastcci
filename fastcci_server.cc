@@ -345,7 +345,7 @@ void notin(int qi, resultList *r1, resultList *r2) {
     resultPrintf(qi, "OUTOF %d", n-outstart);
   // otherwise make a crude guess based on the progress within result r1
   else if(i>0)
-    resultPrintf(qi, "OUTOF %d", (queue[qi].s*r1->num)/i);
+    resultPrintf(qi, "OUTOF %d", (outend*r1->num)/i);
 }
 
 //
@@ -391,7 +391,7 @@ void intersect(int qi, resultList *r1, resultList *r2) {
     resultPrintf(qi, "OUTOF %d", n-outstart);
   // otherwise make a crude guess based on the progress within result r1
   else if(i>0)
-    resultPrintf(qi, "OUTOF %d", (queue[qi].s*r1->num)/i);
+    resultPrintf(qi, "OUTOF %d", (outend*r1->num)/i);
 }
 
 //
@@ -443,7 +443,7 @@ void findFQV(int qi, resultList *r1) {
     resultPrintf(qi, "OUTOF %d", n-outstart);
   // otherwise make a crude guess
   else if (((k-1)*r1->num + i)>0)
-    resultPrintf(qi, "OUTOF %d", (queue[qi].s*r1->num*3) / ((k-1)*r1->num + i));
+    resultPrintf(qi, "OUTOF %d", (outend * r1->num*3) / ((k-1)*r1->num + i));
 }
 
 
