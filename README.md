@@ -12,7 +12,7 @@ Fast Commons Category Inspection is an in-memory database for fast commons categ
 
 FastCCI can operate without depth limits on categories.
 
-```fastcci``` builds the binary database files form an SQL dump of the categorylinks database.
+```fastcci_build_db``` builds the binary database files form an SQL dump of the categorylinks database.
 
 ```fastcci_server``` is the database server backend that can be queried through HTTP.
 
@@ -27,7 +27,7 @@ The text output is streamed into the ```fastcci``` command that parses it and ge
 Both files are saved to the current directory.
 
 ```
-mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e 'select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!="page" and page_namespace=14 and page_title=cl_to order by page_id;' --quick --batch --silent | ./fastcci
+mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e 'select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!="page" and page_namespace=14 and page_title=cl_to order by page_id;' --quick --batch --silent | ./fastcci_build_db
 ```
 
 ## Query syntax

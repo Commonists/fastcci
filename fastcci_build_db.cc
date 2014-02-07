@@ -11,6 +11,12 @@ void growTree(int max=0) {
     if (maxtree<=max) maxtree = max+1;
     tree = (tree_type*)realloc(tree, maxtree * sizeof *tree);
   }
+
+  // check for allocation error
+  if (tree==NULL) {
+    fprintf(stderr, "Out of memory in growTree()\n");
+    exit(1);
+  }
 }
 
 void growCat(int max=0) {
@@ -23,6 +29,12 @@ void growCat(int max=0) {
     maxcat += 1000000;
     if (maxcat<=max) maxcat = max+1;
     cat = (tree_type*)realloc(cat, maxcat * sizeof *cat);
+  }
+
+  // check for allocation error
+  if (cat==NULL) {
+    fprintf(stderr, "Out of memory in growCat()\n");
+    exit(1);
   }
 
   // initialize al cat entries to -1 (unused pageids are files)
