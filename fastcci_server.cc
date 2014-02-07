@@ -1,5 +1,6 @@
 #include <time.h>
 #include "fastcci.h"
+#include <sys/stat.h>
 
 // thread management objects
 pthread_mutex_t handlerMutex;
@@ -10,6 +11,9 @@ pthread_cond_t condition;
 const int maxdepth=500;
 int maxcat; 
 tree_type *cat, *tree, *parent; 
+
+// modification time of the tree database file
+time_t treetime;
 
 // new result data structure
 struct resultList {
@@ -722,6 +726,10 @@ void *computeThread( void *d ) {
         }
       }
 
+      // report database age
+      time_t now = time(NULL);
+      resultPrintf(i, "DBAGE %.f", difftime(now,treetime)); 
+
       // done with this request
       resultDone(i);
 
@@ -770,8 +778,17 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  // read tree file
   snprintf(fname, buflen, "%s/fastcci.tree", argv[2]);
   readFile(fname, tree);
+
+  // get modification time of tree file
+  struct stat statbuf;
+  if (stat(fname, &statbuf) == -1) {
+    perror(fname);
+    exit(1);
+  }
+  treetime = statbuf.st_mtime;
 
   // thread properties
   pthread_attr_t attr;
