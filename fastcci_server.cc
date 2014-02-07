@@ -19,6 +19,11 @@ struct resultList {
   resultList(int initialSize = 1024*1024) : max(initialSize), num(0), tags(NULL) {
     buf = (result_type*)malloc(max * sizeof *buf);
     mask = (unsigned char*)malloc(maxcat * sizeof *mask);
+
+    if (buf==NULL || mask==NULL) {
+      fprintf(stderr, "Out of memory in resultList().\n");
+      exit(1);
+    }
   }
 
   // pointer to element after the last result
@@ -29,6 +34,11 @@ struct resultList {
     if (num+len > max) {
       while (num+len > max) max *= 2;
       buf = (result_type*)realloc(buf, max * sizeof *buf);
+
+      if (buf==NULL) {
+        fprintf(stderr, "Out of memory in resultList->grow().\n");
+        exit(1);
+      }
     }
   }
 
@@ -40,6 +50,11 @@ struct resultList {
   // tags list for special union groups (to identify FP/QI/VI for example)
   void addTags() {
     tags = (unsigned char*)calloc(maxcat, sizeof(*tags));
+
+    if (tags==NULL) {
+      fprintf(stderr, "Out of memory in resultList->addTags().\n");
+      exit(1);
+    }
   }
 
   // sort result list (unused for output)
@@ -733,6 +748,10 @@ int main(int argc, char *argv[]) {
 
   // parent category buffer for shortest path finding
   parent = (tree_type*)malloc(maxcat * sizeof *parent);
+  if (parent==NULL) {
+    fprintf(stderr, "Out of memory allocating 'parent' in main().\n");
+    exit(1);
+  }
 
   snprintf(fname, buflen, "%s/fastcci.tree", argv[2]);
   readFile(fname, tree);

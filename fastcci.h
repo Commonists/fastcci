@@ -41,6 +41,11 @@ int rbInit(ringBuffer &rb) {
   rb.size = 1024;
   rb.mask = rb.size-1;
   rb.buf = (result_type*)malloc(rb.size * sizeof(result_type));
+
+  if (rb.buf==NULL) {
+    fprintf(stderr, "Out of memory in rbInit().\n");
+    exit(1);
+  }
 }
 int rbClear(ringBuffer &rb) {
   rb.a = 0;
@@ -51,6 +56,12 @@ inline bool rbEmpty(ringBuffer &rb) {
 }
 int rbGrow(ringBuffer &rb) {
   rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof *(rb.buf) );
+
+  if (rb.buf==NULL) {
+    fprintf(stderr, "Out of memory in rbGrow().\n");
+    exit(1);
+  }
+
   fprintf(stderr,"Ring buffer grow: a=%d b=%d size=%d\n", rb.a, rb.b, rb.size );
   memcpy( &(rb.buf[rb.size]), rb.buf, rb.size * sizeof *(rb.buf) );
   rb.size *= 2;
@@ -95,6 +106,10 @@ int readFile(const char *fname, tree_type* &buf) {
   int sz = ftell(in);
   fseek(in, 0L, SEEK_SET);
   buf = (tree_type*)malloc(sz);
+  if (buf==NULL) {
+    fprintf(stderr, "Out of memory in readFile(\"%s\").\n", fname);
+    exit(1);
+  }
   int sz2 = fread(buf, 1, sz, in);
   return sz;
 }
