@@ -14,7 +14,7 @@ void growTree(int max=0) {
 
   // check for allocation error
   if (tree==NULL) {
-    fprintf(stderr, "Out of memory in growTree()\n");
+    perror("growTree()");
     exit(1);
   }
 }
@@ -33,7 +33,7 @@ void growCat(int max=0) {
 
   // check for allocation error
   if (cat==NULL) {
-    fprintf(stderr, "Out of memory in growCat()\n");
+    perror("growCat()");
     exit(1);
   }
 

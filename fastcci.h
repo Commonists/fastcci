@@ -30,7 +30,7 @@ enum wiType { WT_INTERSECT, WT_TRAVERSE, WT_NOTIN, WT_PATH, WT_FQV };
 enum wiStatus { WS_WAITING, WS_PREPROCESS, WS_COMPUTING, WS_STREAMING, WS_DONE };
 
 
-// breadth first search ringbuffer
+// breadth first search ringbuffer (TODO: OOP)
 struct ringBuffer {
   int size, mask, a, b;
   result_type *buf;
@@ -40,10 +40,8 @@ struct ringBuffer {
 int rbInit(ringBuffer &rb) {
   rb.size = 1024;
   rb.mask = rb.size-1;
-  rb.buf = (result_type*)malloc(rb.size * sizeof(result_type));
-
-  if (rb.buf==NULL) {
-    fprintf(stderr, "Out of memory in rbInit().\n");
+  if ((rb.buf = (result_type*)malloc(rb.size * sizeof(result_type)) ) == NULL) {
+    perror("rbInit()");
     exit(1);
   }
 }
@@ -55,10 +53,8 @@ inline bool rbEmpty(ringBuffer &rb) {
   return rb.a == rb.b;
 }
 int rbGrow(ringBuffer &rb) {
-  rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof *(rb.buf) );
-
-  if (rb.buf==NULL) {
-    fprintf(stderr, "Out of memory in rbGrow().\n");
+  if ((rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof *(rb.buf)) ) == NULL) {
+    perror("rbGrow()");
     exit(1);
   }
 
@@ -72,7 +68,6 @@ inline void rbPush(ringBuffer &rb, result_type r) {
   rb.buf[(rb.b++) & rb.mask] = r;
 }
 inline result_type rbPop(ringBuffer &rb) {
-  //fprintf(stderr,"Ring buffer pop %d,%d   a=%d b=%d size=%d\n", rb.buf[rb.a & rb.mask]&cat_mask,(rb.buf[rb.a & rb.mask]&depth_mask) >> depth_shift, rb.a, rb.b, rb.size );
   return rb.buf[(rb.a++) & rb.mask];
 }
 
@@ -102,14 +97,24 @@ struct workItem {
 int readFile(const char *fname, tree_type* &buf) {
   fprintf(stderr, "Loading %s ...\n", fname);
   FILE *in = fopen(fname,"rb");
+  if (in==NULL) {
+    perror(fname);
+    exit(1);
+  }
+
+  // determine file size
   fseek(in, 0L, SEEK_END);
   int sz = ftell(in);
   fseek(in, 0L, SEEK_SET);
+
+  // allocate memory for entire file
   buf = (tree_type*)malloc(sz);
   if (buf==NULL) {
-    fprintf(stderr, "Out of memory in readFile(\"%s\").\n", fname);
+    perror("readFile()");
     exit(1);
   }
+
+  // read file into memory
   int sz2 = fread(buf, 1, sz, in);
   return sz;
 }

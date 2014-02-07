@@ -25,7 +25,7 @@ struct resultList {
     mask = (unsigned char*)malloc(maxcat * sizeof *mask);
 
     if (buf==NULL || mask==NULL) {
-      fprintf(stderr, "Out of memory in resultList().\n");
+      perror("resultList()");
       exit(1);
     }
   }
@@ -37,10 +37,8 @@ struct resultList {
   void grow(int len) {
     if (num+len > max) {
       while (num+len > max) max *= 2;
-      buf = (result_type*)realloc(buf, max * sizeof *buf);
-
-      if (buf==NULL) {
-        fprintf(stderr, "Out of memory in resultList->grow().\n");
+      if ((buf = (result_type*)realloc(buf, max * sizeof *buf)) == NULL) {
+        perror("resultList->grow()");
         exit(1);
       }
     }
@@ -50,10 +48,8 @@ struct resultList {
   void shrink() {
     if (num < max/2 && max>(1024*1024)) {
       max /= 2;
-      buf = (result_type*)realloc(buf, max * sizeof *buf);
-
-      if (buf==NULL) {
-        fprintf(stderr, "Out of memory in resultList->shrink().\n");
+      if ((buf = (result_type*)realloc(buf, max * sizeof *buf)) == NULL) {
+        perror("resultList->shrink()");
         exit(1);
       }
     }
@@ -66,10 +62,8 @@ struct resultList {
 
   // tags list for special union groups (to identify FP/QI/VI for example)
   void addTags() {
-    tags = (unsigned char*)calloc(maxcat, sizeof(*tags));
-
-    if (tags==NULL) {
-      fprintf(stderr, "Out of memory in resultList->addTags().\n");
+    if ((tags = (unsigned char*)calloc(maxcat, sizeof(*tags))) == NULL) {
+      perror("resultList->addTags()");
       exit(1);
     }
   }
@@ -772,9 +766,8 @@ int main(int argc, char *argv[]) {
   goodImages = new resultList(512);
 
   // parent category buffer for shortest path finding
-  parent = (tree_type*)malloc(maxcat * sizeof *parent);
-  if (parent==NULL) {
-    fprintf(stderr, "Out of memory allocating 'parent' in main().\n");
+  if ((parent = (tree_type*)malloc(maxcat * sizeof *parent)) == NULL) {
+    perror("parent");
     exit(1);
   }
 
