@@ -42,6 +42,19 @@ struct resultList {
     }
   }
 
+  // attempt to shrink large buffers to half their size
+  void shrink() {
+    if (num < max/2 && max>(1024*1024)) {
+      max /= 2;
+      buf = (result_type*)realloc(buf, max * sizeof *buf);
+
+      if (buf==NULL) {
+        fprintf(stderr, "Out of memory in resultList->shrink().\n");
+        exit(1);
+      }
+    }
+  }
+
   // clear mask
   void clear() {
     memset(mask,0,maxcat * sizeof *mask);
@@ -664,6 +677,7 @@ void *computeThread( void *d ) {
       // signal start of compute
       resultStart(i);
 
+      int nr;
       if (queue[i].type==WT_PATH) {
         // path finding
         result[0]->clear();
@@ -678,7 +692,7 @@ void *computeThread( void *d ) {
         int cid[2]   = {queue[i].c1, queue[i].c2};
         int depth[2] = {queue[i].d1, queue[i].d2};
         // number of result lists needed
-        int nr = (queue[i].type==WT_TRAVERSE || queue[i].type==WT_FQV) ? 1 : 2;
+        nr = (queue[i].type==WT_TRAVERSE || queue[i].type==WT_FQV) ? 1 : 2;
         for (int j=0; j<nr; ++j) {
           // clear visitation mask
           result[j]->clear();
@@ -710,6 +724,9 @@ void *computeThread( void *d ) {
 
       // done with this request
       resultDone(i);
+
+      // try to shrink result buffers uses in this request
+      for (int j=0; j<nr; ++j) result[0]->shrink();
 
       // pop item off queue
       pthread_mutex_lock(&mutex);
