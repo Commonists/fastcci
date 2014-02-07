@@ -1,7 +1,7 @@
 #include "fastcci.h"
 
 int maxtree = 150000000, maxcat = 40000000;
-tree_type *cat, *tree; 
+tree_type *cat=NULL, *tree=NULL; 
 
 void growTree(int max=0) {
   if (tree==NULL) 
