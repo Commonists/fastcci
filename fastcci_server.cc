@@ -3,9 +3,9 @@
 #include <sys/stat.h>
 
 // thread management objects
-pthread_mutex_t handlerMutex;
-pthread_mutex_t mutex;
-pthread_cond_t condition;
+pthread_mutex_t handlerMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex        = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condition     = PTHREAD_COND_INITIALIZER;
 
 // category data and traversal information
 const int maxdepth=500;
