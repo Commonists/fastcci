@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
           cfile++;
         } else {
           // we already have a file at tree[subcat], move it to the end of cfile
-          fprintf(stderr,"out of order subcat!\n");
+          //fprintf(stderr,"out of order subcat!\n");
           tree[cfile++] = tree[csubcat];
           tree[csubcat++] = cl_from;
         }
@@ -165,5 +165,11 @@ int main(int argc, char *argv[]) {
 
   free(tree);
   free(cat);
+
+  // write success file
+  FILE *done = fopen("done","wt");
+  fprintf(done, "OK\n");
+  fclose(done);
+
   return 0;
 }
