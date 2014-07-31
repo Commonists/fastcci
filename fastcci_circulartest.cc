@@ -15,7 +15,7 @@ int readFile(const char *fname, int* &buf) {
   return sz;
 }
 
-const int maxdepth=300;
+const int maxdepth=30000;
 int history[maxdepth];
 int subcatcount;
 int *cat; 
