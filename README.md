@@ -72,3 +72,8 @@ The response is delivered in a simple text format with multiple lines. Each line
 * ```WORKING``` followed by two integers representing the current number of items found in  ```c1``` and ```c2```. This response item is sent to the client every 0.2s and shows the current state of the ongoing category traversal.
 * ```DONE``` indicates the end of the server transmission.
 
+## Command line tools
+
+* ```fastcci_tarjan``` uses [Tarjan's Algorithm](https://en.wikipedia.org/wiki/Tarjan%E2%80%99s_strongly_connected_components_algorithm) to find _strongly coupled components_ in the category graph. Those are essentially conencted clusters of loops.
+* ```fastcci_subcats cat_id``` outputs the direct subcategories of the category specified by ```cat_id``` (this is mostly for debugging)
+
