@@ -37,7 +37,7 @@ struct ringBuffer {
 };
 
 
-int rbInit(ringBuffer &rb) {
+void rbInit(ringBuffer &rb) {
   rb.size = 1024;
   rb.mask = rb.size-1;
   if ((rb.buf = (result_type*)malloc(rb.size * sizeof(result_type)) ) == NULL) {
@@ -45,14 +45,14 @@ int rbInit(ringBuffer &rb) {
     exit(1);
   }
 }
-int rbClear(ringBuffer &rb) {
+void rbClear(ringBuffer &rb) {
   rb.a = 0;
   rb.b = 0;
 }
 inline bool rbEmpty(ringBuffer &rb) {
   return rb.a == rb.b;
 }
-int rbGrow(ringBuffer &rb) {
+void rbGrow(ringBuffer &rb) {
   if ((rb.buf = (result_type*)realloc(rb.buf, 2 * rb.size * sizeof *(rb.buf)) ) == NULL) {
     perror("rbGrow()");
     exit(1);
