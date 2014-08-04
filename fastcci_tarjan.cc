@@ -5,19 +5,11 @@
 #endif
 #include <string.h>
 
-int readFile(const char *fname, int* &buf) {
-  FILE *in = fopen(fname,"rb");
-  fseek(in, 0L, SEEK_END);
-  int sz = ftell(in);
-  fseek(in, 0L, SEEK_SET);
-  buf = (int*)malloc(sz);
-  fread(buf, 1, sz, in);
-  return sz;
-}
+#include "fastcci.h"
 
 // the graph
 int *cat; 
-int *tree; 
+tree_type *tree; 
 
 // Tarjan's id and lowlink fields
 int *id;
