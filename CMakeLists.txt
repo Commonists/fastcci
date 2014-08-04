@@ -16,5 +16,6 @@ add_executable(fastcci_intersection2 fastcci_intersection2.cc)
 add_executable(fastcci_subcats fastcci_subcats.cc)
 add_executable(fastcci_path fastcci_path.cc)
 add_executable(fastcci_pfs_search fastcci_pfs_search.cc)
+add_executable(fastcci_diamond fastcci_diamond.cc)
 
 install (TARGETS fastcci_server fastcci_build_db DESTINATION /usr/bin COMPONENT binaries)

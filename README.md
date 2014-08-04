@@ -75,6 +75,7 @@ The response is delivered in a simple text format with multiple lines. Each line
 ## Command line tools
 
 * ```fastcci_tarjan``` uses [Tarjan's Algorithm](https://en.wikipedia.org/wiki/Tarjan%E2%80%99s_strongly_connected_components_algorithm) to find _strongly coupled components_ in the category graph. Those are essentially conencted clusters of loops.
-* ```fastcci_circulartest``` uses a custom algorithm to find individual category loops. In contract to ```fastcci_tarjan``` this also catches self referencing categories. It may however ommit loops that share nodes with other loops. 
-* ```fastcci_subcats cat_id``` outputs the direct subcategories of the category specified by ```cat_id``` (this is mostly for debugging)
-* ```./fastcci_pfs_search P F S``` finds all categories with ```P``` parent categories, ```F``` number of files, and ```S``` subcategories.
+* ```fastcci_circulartest``` uses a custom algorithm to find individual category loops. Unlike ```fastcci_tarjan``` this also catches self referencing categories. It may however ommit loops that share nodes with other loops. 
+* ```fastcci_subcats cat_id``` outputs the direct subcategories of the category specified by ```cat_id``` (this is mostly for debugging).
+* ```fastcci_pfs_search P F S``` finds all categories with ```P``` parent categories, ```F``` number of files, and ```S``` subcategories.
+* ```fastcci_diamond``` finds all category _diamonds_ (i.e. B,C categories with a common parent A and a common subcategory D).
