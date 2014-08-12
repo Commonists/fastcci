@@ -71,6 +71,7 @@ int main() {
 
   readFile("../fastcci.tree", tree);
 
+#if 0
   // recursion
   for (int d=1; d<=maxdepth; ++d)
   {
@@ -87,7 +88,8 @@ int main() {
       }
   }
 
-#if 0
+#else
+
   // initialize generate depth buffer 0
   for (int v=0; v<maxcat; ++v) cbuf[0][v] = 1;
 
@@ -105,14 +107,21 @@ int main() {
   int maxmax = 0;
   for (int d=0; d<=maxdepth; ++d)
   {
-    // find maximum size
+    // find maximum size and mean (median?)
     maxsize[d] = 0;
+    int n = 0; 
+    double sum = 0.0;
     for (int v=0; v<maxcat; ++v)
-      if (cat[v]>-1 && cbuf[d][v]>maxsize[d])
-        maxsize[d] = cbuf[d][v];
-
+      if (cat[v]>-1) 
+      {
+        if (cbuf[d][v]>maxsize[d])
+          maxsize[d] = cbuf[d][v];
+        n++;
+        sum += cbuf[d][v];
+      }
     if (maxsize[d]>maxmax) maxmax = maxsize[d];
-    printf("maxsize[%d] = %d\n", d, maxsize[d]);
+    //printf("maxsize[%d] = %d\n", d, maxsize[d]);
+    printf("%d %d\n", d, int(sum/double(n)));
   }
 
   return 0;

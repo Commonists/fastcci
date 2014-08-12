@@ -70,8 +70,8 @@ int main() {
   // find maximum depth
   int maxdepth = 0;
   for (int v=0; v<maxcat; ++v)
-    if (cat[v]>-1)
-      if (dbuf[v]>maxdepth) maxdepth = dbuf[v];
+    if (cat[v]>-1 && dbuf[v]>maxdepth) 
+      maxdepth = dbuf[v];
 
   printf("maxdepth = %d\n", maxdepth);
 
