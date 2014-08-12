@@ -26,7 +26,7 @@ inline void count(int v, int d) {
 
   // Iterate over subcategories
   int c = cat[v], cend = tree[c];
-  c += 2;
+  c += CBEGIN;
   while (c < cend) {
     int w = tree[c];
     cbuf[d][v] += cbuf[d-1][w];
@@ -46,7 +46,7 @@ inline int rcount(int v, int d) {
   // Iterate over subcategories
   int count = 0;
   int c = cat[v], cend = tree[c];
-  c += 2;
+  c += CBEGIN;
   while (c < cend) {
     int w = tree[c];
     if (mask[w]==0)
@@ -109,10 +109,10 @@ int main() {
   {
     // find maximum size and mean (median?)
     maxsize[d] = 0;
-    int n = 0; 
+    int n = 0;
     double sum = 0.0;
     for (int v=0; v<maxcat; ++v)
-      if (cat[v]>-1) 
+      if (cat[v]>-1)
       {
         if (cbuf[d][v]>maxsize[d])
           maxsize[d] = cbuf[d][v];

@@ -33,22 +33,22 @@ int main(int argc, char *argv[]) {
   for (int v=0; v<maxcat; ++v)
     if (cat[v]>-1)
     {
-      int i = cat[v], cstart = i+2, cend = tree[i];
+      int i = cat[v], cstart = i+CBEGIN, cend = tree[i];
       // go over sub cats and tag sub sub cats
-      for (int w=cstart; w<cend; ++w) 
+      for (int w=cstart; w<cend; ++w)
       {
-        int j = cat[tree[w]], scstart = j+2, scend = tree[j];
+        int j = cat[tree[w]], scstart = j+CBEGIN, scend = tree[j];
 
         // go over sub sub cats and tag
-        for (int x=scstart; x<scend; ++x) 
+        for (int x=scstart; x<scend; ++x)
         {
           if (ssm1[tree[x]] == v)
           {
             // we've already seen this subsubcat from another subcat
-            printf("%d|%d|%d|%d\n", v, ssm2[tree[x]], tree[w], tree[x]); 
+            printf("%d|%d|%d|%d\n", v, ssm2[tree[x]], tree[w], tree[x]);
             nummatch++;
           }
-          else  
+          else
           {
             ssm1[tree[x]] = v;
             ssm2[tree[x]] = tree[w];

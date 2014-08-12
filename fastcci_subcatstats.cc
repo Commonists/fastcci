@@ -8,8 +8,8 @@
 #include "fastcci.h"
 
 // the graph
-int *cat; 
-tree_type *tree; 
+int *cat;
+tree_type *tree;
 
 // depth buffer
 int *dbuf;
@@ -22,7 +22,7 @@ int depth(int v) {
 
   // Iterate over subcategories
   int c = cat[v], cend = tree[c];
-  c += 2;
+  c += CBEGIN;
   while (c < cend) {
     w = tree[c];
 
@@ -40,13 +40,13 @@ int depth(int v) {
     {
       // Successor w has not yet been visited; recurse on it
       belowsub = 1 + depth(w);
-    } 
+    }
 
     // remember deepest branch
-    if (belowsub > below) 
+    if (belowsub > below)
       below = belowsub;
 
-    c++; 
+    c++;
   }
 
   dbuf[v] = below;
@@ -56,7 +56,7 @@ int depth(int v) {
 int main() {
   int maxcat = readFile("../fastcci.cat", cat);
   maxcat /= sizeof(int);
-  
+
   dbuf      = (int*)malloc(maxcat * sizeof(*dbuf));
   memset(dbuf, 255, maxcat * sizeof(*dbuf));
 
@@ -64,13 +64,13 @@ int main() {
 
   // generate depth buffer
   for (int v=0; v<maxcat; ++v)
-    if (cat[v]>-1 && dbuf[v]==-1) 
-      depth(v); 
+    if (cat[v]>-1 && dbuf[v]==-1)
+      depth(v);
 
   // find maximum depth
   int maxdepth = 0;
   for (int v=0; v<maxcat; ++v)
-    if (cat[v]>-1 && dbuf[v]>maxdepth) 
+    if (cat[v]>-1 && dbuf[v]>maxdepth)
       maxdepth = dbuf[v];
 
   printf("maxdepth = %d\n", maxdepth);
@@ -94,11 +94,11 @@ int main() {
       while(needdepth>0)
       {
         needdepth--;
-        
+
         // Iterate over subcategories
         bool match = false;
         int c = cat[w], cend = tree[c];
-        c += 2;
+        c += CBEGIN;
         while (c<cend) {
           if (dbuf[tree[c]] == needdepth) {
             w = tree[c];

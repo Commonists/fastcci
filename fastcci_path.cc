@@ -1,7 +1,7 @@
 /*******************************
  *  fastcci_path cat1 cat2
- *    calculate the subcategory 
- *    path that takes you from 
+ *    calculate the subcategory
+ *    path that takes you from
  *    cat1 to cat 2
  *******************************/
 
@@ -12,20 +12,12 @@
 #endif
 #include <string.h>
 
-int readFile(const char *fname, int* &buf) {
-  FILE *in = fopen(fname,"rb");
-  fseek(in, 0L, SEEK_END);
-  int sz = ftell(in);
-  fseek(in, 0L, SEEK_SET);
-  buf = (int*)malloc(sz);
-  fread(buf, 1, sz, in);
-  return sz;
-}
+#include "fastcci.h"
 
 const int maxdepth=300;
 int history[maxdepth];
-int *cat, cat1, cat2; 
-int *tree; 
+int *cat, cat1, cat2;
+int *tree;
 char *mask;
 bool found = false;
 
@@ -48,10 +40,10 @@ void tagCat(int id, int depth) {
   // mark as visited
   mask[id]=1;
   int c = cat[id], cend = tree[c];
-  c += 2;
+  c += CBEGIN;
   while (c<cend) {
     tagCat(tree[c], depth+1);
-    c++; 
+    c++;
   }
 }
 
@@ -67,7 +59,7 @@ int main(int argc, char *argv[]) {
   readFile("../fastcci.tree", tree);
 
   memset(mask,0,maxcat);
-  tagCat(cat1,0); 
+  tagCat(cat1,0);
 
   if (!found) printf("No connection found.\n");
 

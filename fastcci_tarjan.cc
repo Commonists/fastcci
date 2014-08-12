@@ -8,8 +8,8 @@
 #include "fastcci.h"
 
 // the graph
-int *cat; 
-tree_type *tree; 
+int *cat;
+tree_type *tree;
 
 // Tarjan's id and lowlink fields
 int *id;
@@ -37,22 +37,22 @@ void strongconnect(int v) {
 
   // Consider successors of v
   int c = cat[v], cend = tree[c];
-  c += 2;
+  c += CBEGIN;
   while (c<cend) {
     w = tree[c];
-    if (id[w] == 0) 
+    if (id[w] == 0)
     {
       // Successor w has not yet been visited; recurse on it
       strongconnect(w);
-      lowlink[v] = lowlink[w] < lowlink[v] ? lowlink[w] : lowlink[v]; 
-    } 
+      lowlink[v] = lowlink[w] < lowlink[v] ? lowlink[w] : lowlink[v];
+    }
     else if (Smask[w])
     {
       // Successor w is in stack S and hence in the current SCC
       lowlink[v] = id[w] < lowlink[v] ? id[w] : lowlink[v];
     }
 
-    c++; 
+    c++;
   }
 
   // If v is a root node, pop the stack and generate an SCC
@@ -62,7 +62,7 @@ void strongconnect(int v) {
     int n = 0;
     do {
       // pop from stack
-      w = S[--s]; 
+      w = S[--s];
       Smask[w]--;
 
       //add w to current strongly connected component
@@ -82,7 +82,7 @@ void strongconnect(int v) {
 int main() {
   int maxcat = readFile("../fastcci.cat", cat);
   maxcat /= sizeof(int);
-  
+
   lowlink = (int*)malloc(maxcat * sizeof(*lowlink));
   id      = (int*)malloc(maxcat * sizeof(*id));
   memset(id, 0, maxcat * sizeof(*id));
@@ -97,8 +97,8 @@ int main() {
   readFile("../fastcci.tree", tree);
 
   for (int v=0; v<maxcat; ++v)
-    if (cat[v]>-1 && id[v]==0) 
-      strongconnect(v); 
+    if (cat[v]>-1 && id[v]==0)
+      strongconnect(v);
 
   free(cat);
   free(tree);

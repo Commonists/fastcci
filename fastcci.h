@@ -9,11 +9,14 @@
 #include <pthread.h>
 #include <sys/types.h>
 
-typedef int32_t tree_type; 
+typedef int32_t tree_type;
 typedef int64_t result_type;
 const int depth_shift = 32;
 const result_type depth_mask = result_type(0x7FFFFFFF) << depth_shift;
 const result_type cat_mask   = 0x7FFFFFFF;
+
+// Tree database category header size
+const int CBEGIN = 2;
 
 #include <onion/onion.h>
 #include <onion/handler.h>
@@ -61,7 +64,7 @@ void rbGrow(ringBuffer &rb) {
   fprintf(stderr,"Ring buffer grow: a=%d b=%d size=%d\n", rb.a, rb.b, rb.size );
   memcpy( &(rb.buf[rb.size]), rb.buf, rb.size * sizeof *(rb.buf) );
   rb.size *= 2;
-  rb.mask = rb.size-1; 
+  rb.mask = rb.size-1;
 }
 inline void rbPush(ringBuffer &rb, result_type r) {
   if (rb.b-rb.a >= rb.size) rbGrow(rb);
@@ -72,7 +75,7 @@ inline result_type rbPop(ringBuffer &rb) {
 }
 
 
-// work item queue 
+// work item queue
 struct workItem {
   // thread data
   pthread_mutex_t mutex;
@@ -122,5 +125,3 @@ int readFile(const char *fname, tree_type* &buf) {
 int compare (const void * a, const void * b) {
   return ( *(tree_type*)b - *(tree_type*)a );
 }
-
-

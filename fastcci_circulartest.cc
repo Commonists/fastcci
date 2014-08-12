@@ -5,21 +5,13 @@
 #endif
 #include <string.h>
 
-int readFile(const char *fname, int* &buf) {
-  FILE *in = fopen(fname,"rb");
-  fseek(in, 0L, SEEK_END);
-  int sz = ftell(in);
-  fseek(in, 0L, SEEK_SET);
-  buf = (int*)malloc(sz);
-  fread(buf, 1, sz, in);
-  return sz;
-}
+#include "fastcci.h"
 
 const int maxdepth=30000;
 int history[maxdepth];
 int subcatcount;
-int *cat; 
-int *tree; 
+int *cat;
+int *tree;
 char *mask;
 int *unmask;
 
@@ -37,7 +29,7 @@ void tagCat(int id, int depth) {
     for (i=0; i<depth; ++i) {
       if (history[i] == id) break;
     }
-    
+
     if (i==depth) return; // not a loop
 
     // output loop
@@ -60,10 +52,10 @@ void tagCat(int id, int depth) {
   mask[id] = 1;
   unmask[subcatcount++] = id;
   int c = cat[id], cend = tree[c];
-  c += 2;
+  c += CBEGIN;
   while (c<cend) {
     tagCat(tree[c], depth+1);
-    c++; 
+    c++;
   }
 }
 
@@ -82,7 +74,7 @@ int main() {
     if (cat[i]>-1 && mask[i]==0) {
       subcatcount = 0;
       loop_found = false;
-      tagCat(i,0); 
+      tagCat(i,0);
 
       if (false && loop_found) {
         // untag everything that was tagged before

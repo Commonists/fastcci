@@ -1,10 +1,10 @@
 #include "fastcci.h"
 
 int maxtree = 150000000, maxcat = 40000000;
-tree_type *cat=NULL, *tree=NULL; 
+tree_type *cat=NULL, *tree=NULL;
 
 void growTree(int max=0) {
-  if (tree==NULL) 
+  if (tree==NULL)
     tree = (tree_type*)malloc(maxtree * sizeof *tree);
   else {
     maxtree += 10000000;
@@ -52,9 +52,9 @@ int main(int argc, char *argv[]) {
   growTree();
 
   // insert empty dummy category at tree[0]
-  int cstart=2, cfile=2, csubcat=2;
-  tree[0] = 2;
-  tree[1] = 2;
+  int cstart=CBEGIN, cfile=CBEGIN, csubcat=CBEGIN;
+  tree[0] = CBEGIN;
+  tree[1] = CBEGIN;
 
   // read data dump line by line
   char buf[200], type[10];
@@ -81,8 +81,8 @@ int main(int argc, char *argv[]) {
           // expect a subcategory or a file
         }
         cstart = csubcat = cfile;
-        csubcat += 2;
-        cfile   += 2;
+        csubcat += CBEGIN;
+        cfile   += CBEGIN;
       }
 
       if (cfile>=maxtree) growTree();
@@ -127,26 +127,26 @@ int main(int argc, char *argv[]) {
     csubcat = tree[cstart];
     cfile = tree[cstart+1];
 
-    cstart += 2;
+    cstart += CBEGIN;
 
     if (csubcat<cstart) {
       fprintf(stderr,"Negative subcat block length in cat %d\n", i);
       exit(1);
-    } 
+    }
     if (cfile<csubcat) {
       fprintf(stderr,"Negative file block length in cat %d\n", i);
       exit(1);
-    } 
+    }
 
     // verify subcats
-    for(; cstart<csubcat; cstart++) 
+    for(; cstart<csubcat; cstart++)
       if (cat[tree[cstart]] < 0 ) {
         fprintf(stderr,"File %d in subcat block of cat %d\n", tree[cstart], i);
         exit(1);
       }
 
     // verify files
-    for(; cstart<cfile; cstart++) 
+    for(; cstart<cfile; cstart++)
       if (cat[tree[cstart]] != -1 ) {
         fprintf(stderr,"Category %d in file block of cat %d\n", tree[cstart], i);
         exit(1);

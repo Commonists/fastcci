@@ -24,7 +24,7 @@ int main() {
     if (cat[v]>-1)
     {
       catcount++;
-      int i = cat[v], cstart = i+2, cend = tree[i], cfile = tree[i+1];
+      int i = cat[v], cstart = i+CBEGIN, cend = tree[i], cfile = tree[i+1];
       catrelcount += cend-cstart;
       fileincatcount += cfile-cend;
     }

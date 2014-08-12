@@ -5,7 +5,7 @@
 #include <malloc.h>
 #endif
 
-// Search categories with a given number of Parent cat, File, and Sub cat counts 
+// Search categories with a given number of Parent cat, File, and Sub cat counts
 
 int main(int argc, char *argv[]) {
   if (argc!=4) exit(1);
@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
   for (int v=0; v<maxcat; ++v)
     if (cat[v]>-1)
     {
-      int i = cat[v], cstart = i+2, cend = tree[i];
+      int i = cat[v], cstart = i+CBEGIN, cend = tree[i];
       // increase parent cat counter
       for (int j=cstart; j<cend; ++j) pcc[tree[j]]++;
     }
@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
   for (int v=0; v<maxcat; ++v)
     if (cat[v]>-1)
     {
-      int i = cat[v], cstart = i+2, cend = tree[i], cfile = tree[i+1];
+      int i = cat[v], cstart = i+CBEGIN, cend = tree[i], cfile = tree[i+1];
       // counters
       int nfile = cfile - cend;
       int scc   = cend - cstart;
