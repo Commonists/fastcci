@@ -1,6 +1,6 @@
 #include "fastcci.h"
 
-int maxtree = 150000000, maxcat = 40000000;
+int maxtree = 175000000, maxcat = 50000000;
 tree_type *cat=NULL, *tree=NULL; 
 
 void growTree(int max=0) {
@@ -154,6 +154,7 @@ int main(int argc, char *argv[]) {
   }
 
   // write out binary tree files
+  printf("writing db files...\n");
   FILE *outtree = fopen("fastcci.tree","wb");
   FILE *outcat  = fopen("fastcci.cat","wb");
 
@@ -163,13 +164,20 @@ int main(int argc, char *argv[]) {
   fclose(outtree);
   fclose(outcat);
 
-  free(tree);
-  free(cat);
+  printf("db files written.\n");
 
   // write success file
-  FILE *done = fopen("done","wt");
-  fprintf(done, "OK\n");
-  fclose(done);
+  FILE *done = fopen("done", "w");
+  if (done)
+  {
+    fprintf(done, "OK\n");
+    fclose(done);
+  }
+  else
+    printf("Could not open file.\n");
+
+  free(tree);
+  free(cat);
 
   return 0;
 }
