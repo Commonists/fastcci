@@ -1,4 +1,4 @@
-FastCCI
+FastCCI [![Build Status](https://travis-ci.org/Commonists/fastcci.svg)](https://travis-ci.org/Commonists/fastcci)
 =======
 
 ![FastCCI Logo](http://i.imgur.com/OPQOsVK.png)
