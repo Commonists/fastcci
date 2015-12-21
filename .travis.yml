@@ -1,9 +1,15 @@
 language: cpp
 
+addons:
+  apt:
+    packages:
+      - libev-dev
+
 compiler:
   - gcc
 
 before_script:
+  - ./build_onion.sh
   - mkdir build
   - cd build
   - cmake ..
