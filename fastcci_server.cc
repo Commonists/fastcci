@@ -476,7 +476,10 @@ void findFQV(int qi, resultList *r1) {
 onion_connection_status handleStatus(void *d, onion_request *req, onion_response *res)
 {
   pthread_mutex_lock(&mutex);
-  onion_response_printf(res, "%d requests in the queue.\n", bItem-aItem);
+  onion_response_printf(res, "%d requests in the queue.<br/>\n", bItem-aItem);
+  onion_response_printf(res, "%d category relations.<br/>\n", maxcat);
+  time_t now = time(NULL);
+  onion_response_printf(res, "%.f seconds since the last DB update.<br/>\n", difftime(now,treetime));
   
   // list all active queue items 
   //for (int i=aItem; i<bItem; ++i)
