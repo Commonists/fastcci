@@ -119,6 +119,9 @@ ssize_t resultPrintf(int i, const char *fmt, ...) {
     else if (queue[i].connection==WC_JS) 
       return onion_response_printf(res, " '%s',", buf);
   }
+  printf("%x\n",buf);
+  printf("%s\n",buf);
+
   if (ws)  return onion_websocket_printf(ws, "%s", buf);
   return 0;
 }
