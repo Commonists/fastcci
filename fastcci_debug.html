@@ -1,0 +1,76 @@
+<html>
+<head>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script>
+  $(function() {
+    var url = 'localhost:8080';
+
+    // get a translated string
+    function i18n(key) {
+      if (!(key in i18nData) || !(uiLang in i18nData[key])) {
+        return key;
+      }
+      return i18nData[key][uiLang];
+    }
+
+    // request the fastcci db over HTTPS (no streaming)
+    function requestXHR(params, callback) {
+      $.get(location.protocol + url, params)
+        .success(function(data) {
+          var res = data.split('\n');
+          for (var i = 0; i < res.length; ++i) {
+            callback(res[i]);
+          }
+        });
+    }
+
+    // request the fastcci db using a JS callback (no streaming, no CORS)
+    function requestJS(params, callback) {
+      window.fastcciCallback = function(res) {
+        for (var i = 0; i < res.length; ++i) {
+          callback(res[i]);
+        }
+      };
+      $.getScript(location.protocol + url + '?t=js&' + $.param(params));
+    }
+
+    // request the fastcci db over a WebSocket (streaming with progressive status updates)
+    function requestSocket(params, callback) {
+      var ws = new WebSocket('ws:' + url + '?' + $.param(params));
+      //ws.onmessage = function(event) { setTimeout(function() {callback(event.data);}, 0); };
+      ws.onmessage = function (event) {
+        callback(event.data);
+      };
+      ws.onerror = function(event) {
+        // We should fall back to JS if the WS connection throws an error
+        // However current Chrome versions throw a non-fatal error (reserved bits)
+        // I'll need to fix this first before I can reenable the fallback :-/
+        //mw.notify('Still connecting...');
+        //request = requestJS;
+        //request(params, callback);
+      };
+    }
+
+    // determine request method (requestSocket > requestXHR > requestJS)
+
+    // websockets are currently broken on the server side
+    request = ('WebSocket' in window) ? requestSocket : (('withCredentials' in new XMLHttpRequest()) ? requestXHR : requestJS);
+
+    // request wrapper that prepares the gallery
+    function fetchGallery(params) {
+      // append to result gallery
+      function echoResults(txt) {
+        $('body').append($('<div>').text(txt));
+      }
+
+      request(params, echoResults);
+    }
+
+    thisPageId = 1316; // Category:Paris
+    fetchGallery({ c1: thisPageId, d1: 15, s: 200, a: 'fqv' });
+  });
+  </script>
+</head>
+<body>
+</body>
+</html>
