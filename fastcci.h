@@ -2,14 +2,17 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <fcntl.h>
 #if !defined(__APPLE__)
 #include <malloc.h>
 #endif
 #include <string.h>
 #include <pthread.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
 
-typedef int32_t tree_type; 
+typedef int32_t tree_type;
 typedef int64_t result_type;
 const int depth_shift = 32;
 const result_type depth_mask = result_type(0x7FFFFFFF) << depth_shift;
@@ -61,7 +64,7 @@ void rbGrow(ringBuffer &rb) {
   fprintf(stderr,"Ring buffer grow: a=%d b=%d size=%d\n", rb.a, rb.b, rb.size );
   memcpy( &(rb.buf[rb.size]), rb.buf, rb.size * sizeof *(rb.buf) );
   rb.size *= 2;
-  rb.mask = rb.size-1; 
+  rb.mask = rb.size-1;
 }
 inline void rbPush(ringBuffer &rb, result_type r) {
   if (rb.b-rb.a >= rb.size) rbGrow(rb);
@@ -72,7 +75,7 @@ inline result_type rbPop(ringBuffer &rb) {
 }
 
 
-// work item queue 
+// work item queue
 struct workItem {
   // thread data
   pthread_mutex_t mutex;
@@ -94,33 +97,42 @@ struct workItem {
   int t0; // queuing timestamp
 };
 
-int readFile(const char *fname, tree_type* &buf) {
+int readFile(const char *fname, tree_type* &buf)
+{
   fprintf(stderr, "Loading %s ...\n", fname);
-  FILE *in = fopen(fname,"rb");
-  if (in==NULL) {
-    perror(fname);
+
+  struct stat sb;
+  int fd;
+
+  // open file
+  fd = open(fname, O_RDONLY);
+  if (fd == -1) {
+    perror("open");
     exit(1);
   }
 
   // determine file size
-  fseek(in, 0L, SEEK_END);
-  int sz = ftell(in);
-  fseek(in, 0L, SEEK_SET);
-
-  // allocate memory for entire file
-  buf = (tree_type*)malloc(sz);
-  if (buf==NULL) {
-    perror("readFile()");
+  if (fstat(fd, &sb) == -1) {
+    perror ("fstat");
     exit(1);
   }
 
-  // read file into memory
-  int sz2 = fread(buf, 1, sz, in);
-  return sz;
+  // map file into memory
+  buf = (tree_type*)mmap(0, sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
+  if (buf == MAP_FAILED) {
+    perror("mmap");
+    exit(1);
+  }
+
+  // close file
+  if (close(fd) == -1) {
+    perror("close");
+    exit(1);
+  }
+
+  return sb.st_size;
 }
 
 int compare (const void * a, const void * b) {
   return ( *(tree_type*)b - *(tree_type*)a );
 }
-
-
