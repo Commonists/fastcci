@@ -80,18 +80,24 @@ struct workItem {
   // thread data
   pthread_mutex_t mutex;
   pthread_cond_t cond;
+
   // response
   onion_response *res;
   onion_websocket *ws;
+
   // query parameters
   int c1, c2; // categories
   int d1, d2; // depths
+
   // offset and size
   int o,s;
+
   // conenction type
   wiConn connection;
+
   // job type
   wiType type;
+
   // status
   wiStatus status;
   int t0; // queuing timestamp
