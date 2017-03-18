@@ -9,8 +9,8 @@ pthread_cond_t condition     = PTHREAD_COND_INITIALIZER;
 
 // category data and traversal information
 const int maxdepth=500;
-int maxcat; 
-tree_type *cat, *tree, *parent; 
+int maxcat;
+tree_type *cat, *tree, *parent;
 
 // modification time of the tree database file
 time_t treetime;
@@ -31,7 +31,7 @@ struct resultList {
   }
 
   // pointer to element after the last result
-  result_type* tail() const { return &(buf[num]); }  
+  result_type* tail() const { return &(buf[num]); }
 
   // grow buffer to hold at least len more items
   void grow(int len) {
@@ -79,7 +79,7 @@ resultList *result[2], *goodImages;
 // breadth first search ringbuffer
 struct ringBuffer rb;
 
-// work item queue 
+// work item queue
 int aItem = 0, bItem = 0;
 const int maxItem = 1000;
 struct workItem queue[maxItem];
@@ -113,14 +113,12 @@ ssize_t resultPrintf(int i, const char *fmt, ...) {
   // TODO: use onion_*_write here?
   if (res) {
     // regular text response
-    if (queue[i].connection==WC_XHR) 
+    if (queue[i].connection==WC_XHR)
       return onion_response_printf(res, "%s\n", buf);
     // wrap response in a callback call (first data item)
-    else if (queue[i].connection==WC_JS) 
+    else if (queue[i].connection==WC_JS)
       return onion_response_printf(res, " '%s',", buf);
   }
-  printf("%x\n",buf);
-  printf("%s\n",buf);
 
   if (ws)  return onion_websocket_printf(ws, "%s", buf);
   return 0;
@@ -133,9 +131,9 @@ void resultDone(int i) {
   // TODO: use onion_*_write here?
   if (res) {
     // regular text response
-    if (queue[i].connection==WC_XHR) 
+    if (queue[i].connection==WC_XHR)
       onion_response_printf(res, "DONE\n");
-    else 
+    else
       onion_response_printf(res, " 'DONE'] );\n");
   }
   if (ws)  onion_websocket_printf(ws, "DONE");
@@ -145,13 +143,13 @@ void resultStart(int i) {
   onion_websocket *ws = queue[i].ws;
 
   if (res && queue[i].connection==WC_JS) onion_response_printf(res, "fastcciCallback( [");
-  if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START");  
+  if (queue[i].ws ) onion_websocket_printf(queue[i].ws, "COMPUTE_START");
 }
 void resultFlush(int i) {
   // nothing to flush
   if (residx==0) return;
 
-  // 
+  //
   onion_response *res = queue[i].res;
   onion_websocket *ws = queue[i].ws;
 
@@ -190,7 +188,7 @@ void fetchFiles(tree_type id, int depth, resultList *r1) {
     r = rbPop(rb);
     d = (r & depth_mask) >> depth_shift;
     i = r & cat_mask;
-    
+
     // tag current category as visited
     r1->mask[i]=1;
 
@@ -217,7 +215,7 @@ void fetchFiles(tree_type id, int depth, resultList *r1) {
     f = d<254 ? (d+1) : 255;
     d = d<<depth_shift;
     while (len--) {
-      r =  (*src++); 
+      r =  (*src++);
       if (r1->mask[r & cat_mask]==0) {
         *dst++ = (r | d);
         r1->mask[r] = f;
@@ -230,14 +228,14 @@ void fetchFiles(tree_type id, int depth, resultList *r1) {
 //
 // iteratively do a breadth first path search
 //
-result_type history[maxdepth]; 
+result_type history[maxdepth];
 void tagCat(tree_type sid, int qi, int maxDepth, resultList *r1) {
   // clear ring buffer
   rbClear(rb);
 
   bool foundPath = false, c2isFile = (cat[queue[qi].c2]<0);
   int depth = -1;
-  result_type id  = sid, 
+  result_type id  = sid,
               did = queue[qi].c2;
 
   // push root node (depth 0)
@@ -249,7 +247,7 @@ void tagCat(tree_type sid, int qi, int maxDepth, resultList *r1) {
     r  = rbPop(rb);
     d  = (r & depth_mask) >> depth_shift;
     id = r & cat_mask;
-    
+
     // next layer?
     if (d!=ld) {
       depth++;
@@ -302,13 +300,13 @@ void tagCat(tree_type sid, int qi, int maxDepth, resultList *r1) {
       history[i++] = id;
       if (id==sid) break;
       id = parent[id];
-    } 
+    }
     int len = i;
     // output in reverse to get the forward chain
     while (i--) resultQueue(qi, history[i] + (result_type(len-i)<<depth_shift), 0);
     resultFlush(qi);
   } else {
-    resultPrintf(qi, "NOPATH"); 
+    resultPrintf(qi, "NOPATH");
   }
 }
 
@@ -332,7 +330,7 @@ void traverse(int qi, resultList *r1) {
   resultFlush(qi);
 
   // send the (exact) size of the complete result set
-  resultPrintf(qi, "OUTOF %d", r1->num); 
+  resultPrintf(qi, "OUTOF %d", r1->num);
 }
 
 //
@@ -360,7 +358,7 @@ void notin(int qi, resultList *r1, resultList *r2) {
       n++;
       // are we still below the offset?
       if (n<=outstart) continue;
-      // output file      
+      // output file
       resultQueue(qi, r1->buf[i], r1->tags==NULL ? goodImages->tags[r] : r1->tags[r]);
       // are we at the end of the output window?
       if (n>=outend) break;
@@ -370,7 +368,7 @@ void notin(int qi, resultList *r1, resultList *r2) {
   resultFlush(qi);
 
   // did we make it all the way to the end of the result set?
-  if (i==r1->num) 
+  if (i==r1->num)
     resultPrintf(qi, "OUTOF %d", n-outstart);
   // otherwise make a crude guess based on the progress within result r1
   else if(i>0)
@@ -390,7 +388,7 @@ void intersect(int qi, resultList *r1, resultList *r2) {
 
   // was one of the results empty?
   if (r2->num==0) {
-    resultPrintf(qi, "OUTOF %d", 0); 
+    resultPrintf(qi, "OUTOF %d", 0);
     return;
   }
 
@@ -406,7 +404,7 @@ void intersect(int qi, resultList *r1, resultList *r2) {
       n++;
       // are we still below the offset?
       if (n<=outstart) continue;
-      // output file      
+      // output file
       resultQueue(qi, r1->buf[i] + ((m-1)<<depth_shift), r2->tags==NULL ? goodImages->tags[r] : r2->tags[r] );
       // are we at the end of the output window?
       if (n>=outend) break;
@@ -416,7 +414,7 @@ void intersect(int qi, resultList *r1, resultList *r2) {
   resultFlush(qi);
 
   // did we make it all the way to the end of the result set?
-  if (i==r1->num) 
+  if (i==r1->num)
     resultPrintf(qi, "OUTOF %d", n-outstart);
   // otherwise make a crude guess based on the progress within result r1
   else if(i>0)
@@ -436,7 +434,7 @@ void findFQV(int qi, resultList *r1) {
 
   // was one of the results empty?
   if (r1->num==0) {
-    resultPrintf(qi, "OUTOF %d", 0); 
+    resultPrintf(qi, "OUTOF %d", 0);
     return;
   }
 
@@ -456,7 +454,7 @@ void findFQV(int qi, resultList *r1) {
         n++;
         // are we still below the offset?
         if (n<=outstart) continue;
-        // output file      
+        // output file
         resultQueue(qi, r1->buf[i] + ((m-1)<<depth_shift), goodImages->tags[r] );
         // are we at the end of the output window?
         if (n>=outend) break;
@@ -468,7 +466,7 @@ void findFQV(int qi, resultList *r1) {
   resultFlush(qi);
 
   // did we make it all the way to the end of the result set?
-  if (k==4) 
+  if (k==4)
     resultPrintf(qi, "OUTOF %d", n-outstart);
   // otherwise make a crude guess
   else if (((k-1)*r1->num + i)>0)
@@ -483,8 +481,8 @@ onion_connection_status handleStatus(void *d, onion_request *req, onion_response
   onion_response_printf(res, "%d category relations.<br/>\n", maxcat);
   time_t now = time(NULL);
   onion_response_printf(res, "%.f seconds since the last DB update.<br/>\n", difftime(now,treetime));
-  
-  // list all active queue items 
+
+  // list all active queue items
   //for (int i=aItem; i<bItem; ++i)
   //  onion_response_printf(res, "");
 
@@ -506,7 +504,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 
   // still room on the queue?
   pthread_mutex_lock(&mutex);
-  if( bItem-aItem+1 >= maxItem ) {
+  if (bItem-aItem+1 >= maxItem) {
     // too many requests. reject
     fprintf(stderr,"Queue full.\n");
     pthread_mutex_unlock(&mutex);
@@ -592,7 +590,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
     pthread_cond_signal(&condition);
     pthread_mutex_unlock(&mutex);
 
-    // wait for signal from worker thread 
+    // wait for signal from worker thread
     wiStatus status;
     do {
       pthread_mutex_lock(&(queue[i].mutex));
@@ -610,7 +608,7 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
     queue[i].ws  = ws;
     queue[i].res = NULL;
 
-    onion_websocket_printf(ws, "QUEUED %d", i-aItem);  
+    onion_websocket_printf(ws, "QUEUED %d", i-aItem);
 
     // append to the queue and signal worker thread
     pthread_mutex_lock(&mutex);
@@ -630,12 +628,12 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
       switch (status) {
         case WS_WAITING :
           // send number of jobs ahead of this one in queue
-          onion_websocket_printf(ws, "WAITING %d", i-aItem);  
+          onion_websocket_printf(ws, "WAITING %d", i-aItem);
           break;
         case WS_PREPROCESS :
         case WS_COMPUTING :
           // send intermediate result sizes
-          onion_websocket_printf(ws, "WORKING %d %d", result[0]->num, result[1]->num);  
+          onion_websocket_printf(ws, "WORKING %d %d", result[0]->num, result[1]->num);
           break;
       }
       // don't do anything if status is WS_STREAMING, the compute task is sending data
@@ -647,16 +645,16 @@ onion_connection_status handleRequest(void *d, onion_request *req, onion_respons
 }
 
 void *notifyThread( void *d ) {
-  timespec updateInterval, t2; 
+  timespec updateInterval, t2;
   updateInterval.tv_sec = 0;
   updateInterval.tv_nsec = 1000*1000*200; // 200ms
 
-  while(1) {
+  while (1) {
     nanosleep(&updateInterval, &t2);
-    
+
     pthread_mutex_lock(&handlerMutex);
     pthread_mutex_lock(&mutex);
-    
+
     // loop over all active queue items (actually lock &mutex as well!)
     for (int i=aItem; i<bItem; ++i)
       if (queue[i].connection == WC_SOCKET)
@@ -666,8 +664,9 @@ void *notifyThread( void *d ) {
     pthread_mutex_unlock(&handlerMutex);
   }
 }
+
 void *computeThread( void *d ) {
-  while(1) {
+  while (1) {
     // wait for pthread condition
     pthread_mutex_lock(&mutex);
     while (aItem == bItem) pthread_cond_wait(&condition, &mutex);
@@ -700,7 +699,7 @@ void *computeThread( void *d ) {
         for (int j=0; j<nr; ++j) {
           // clear visitation mask
           result[j]->clear();
-          
+
           // fetch files through deep traversal
           fetchFiles(cid[j], depth[j], result[j]);
           fprintf(stderr,"fnum(%d) %d\n", cid[j], result[j]->num);
@@ -728,7 +727,7 @@ void *computeThread( void *d ) {
 
       // report database age
       time_t now = time(NULL);
-      resultPrintf(i, "DBAGE %.f", difftime(now,treetime)); 
+      resultPrintf(i, "DBAGE %.f", difftime(now,treetime));
 
       // done with this request
       resultDone(i);
@@ -749,8 +748,8 @@ void *computeThread( void *d ) {
   }
 }
 
-int main(int argc, char *argv[]) {
-
+int main(int argc, char *argv[])
+{
   if (argc != 3) {
     printf("%s PORT DATADIR\n", argv[0]);
     return 1;
@@ -802,8 +801,8 @@ int main(int argc, char *argv[]) {
   pthread_t notify_thread;
   if (pthread_create(&notify_thread, &attr, notifyThread, NULL)) return 1;
 
-  // precompute a union of Commons FPs, Wikipedia FPs, QIs, and VIs 
-  int goodCats[][3] = { 
+  // precompute a union of Commons FPs, Wikipedia FPs, QIs, and VIs
+  int goodCats[][3] = {
     {3943817,0,1}, // [[Category:Featured_pictures_on_Wikimedia_Commons]]     (depth 0)
     {5799448,1,1}, // [[Category:Featured_pictures_on_Wikipedia_by_language]] (depth 1)
     {3618826,0,2}, // [[Category:Quality_images]]                             (depth 0)
@@ -840,7 +839,7 @@ int main(int argc, char *argv[]) {
   fprintf(stderr,"Server ready. [%ld,%ld]\n", sizeof(tree_type), sizeof(result_type));
   int error = onion_listen(o);
   if (error) perror("Cant create the server");
-  
+
   onion_free(o);
 
   free(cat);
