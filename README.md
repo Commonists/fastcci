@@ -79,3 +79,20 @@ The response is delivered in a simple text format with multiple lines. Each line
 * ```fastcci_subcats cat_id``` outputs the direct subcategories of the category specified by ```cat_id``` (this is mostly for debugging).
 * ```fastcci_pfs_search P F S``` finds all categories with ```P``` parent categories, ```F``` number of files, and ```S``` subcategories.
 * ```fastcci_diamond``` finds all category _diamonds_ (i.e. B,C categories with a common parent A and a common subcategory D).
+
+## Server setup
+
+### Sytemd
+
+Copy the service file `assets/fastcci.service` to `/lib/systemd/system/fastcci.service` and symlink it to `/etc/systemd/system`. Register the service with
+
+```
+systemctl daemon-reload
+systemctl start fastcci.service
+```
+
+Inspect the FastCCi logs with `sudo journalctl -e -u fastcci.service`
+
+### Upstart
+
+Copy the service file `assets/fastcci-server.conf` to `/etc/init/fastcci-server.conf`.
