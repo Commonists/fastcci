@@ -1,13 +1,13 @@
 #include "fastcci.h"
 
-int maxtree = 199000000, maxcat = 57500000;
+int maxtree = 1024*128, maxcat = 1024*128;
 tree_type *cat=NULL, *tree=NULL;
 
 void growTree(int max=0) {
   if (tree==NULL)
     tree = (tree_type*)malloc(maxtree * sizeof *tree);
   else {
-    maxtree += 10000000;
+    maxtree *= 2;
     if (maxtree<=max) maxtree = max+1;
     tree = (tree_type*)realloc(tree, maxtree * sizeof *tree);
   }
@@ -17,6 +17,8 @@ void growTree(int max=0) {
     perror("growTree()");
     exit(1);
   }
+
+  // printf("grew tree to %d\n", maxtree);
 }
 
 void growCat(int max=0) {
@@ -26,7 +28,7 @@ void growCat(int max=0) {
     a = 0;
   } else {
     a = maxcat;
-    maxcat += 1000000;
+    maxcat *= 2;
     if (maxcat<=max) maxcat = max+1;
     cat = (tree_type*)realloc(cat, maxcat * sizeof *cat);
   }
@@ -39,6 +41,8 @@ void growCat(int max=0) {
 
   // initialize al cat entries to -1 (unused pageids are files)
   for (int i=a; i<maxcat; ++i) cat[i] = -1;
+
+  // printf("grew cat to %d\n", maxcat);
 }
 
 
@@ -89,6 +93,7 @@ int main(int argc, char *argv[]) {
 
       if (type[0]=='s') {
         // is the cat index of this subcategory still -1, then set it to the empty dummy cat 0
+        if (cl_from>=maxcat) growCat(cl_from);
         if (cat[cl_from]==-1) cat[cl_from]=0;
 
         // no files in category yet?
