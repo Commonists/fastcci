@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # is the transfer done
-DONE="$HOME/data/done2"
+DONE="$HOME/data/done"
 echo $DONE
 if [ ! -e $DONE ] 
 then
