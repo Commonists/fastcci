@@ -11,6 +11,7 @@ make clean
 cmake ..
 make
 sudo make install
+sudo ldconfig
 
 # build the fastcci server and database builder
 cd $HOME/fastcci
