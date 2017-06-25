@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # install prerequisites
-sudo apt-get -y install make cmake gcc g++
+sudo apt-get -y install rsync make cmake gcc g++
 
 # build onion http and websocket library
 cd $HOME/onion
@@ -34,4 +34,4 @@ cd $HOME
 (crontab -l ; echo "*/1 * * * * $HOME/bin/restart_fastcci.sh")| crontab -
 
 # make sure master derver can push updated DBs
-sudo cp $HOME/.ssh/id_rsa.pub /etc/ssh/userkeys/dschwen
+(crontab -l ; echo "*/1 * * * * sudo cp $HOME/.ssh/id_rsa.pub /etc/ssh/userkeys/$USER")| crontab -

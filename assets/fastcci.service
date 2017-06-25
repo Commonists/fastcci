@@ -4,7 +4,7 @@ After=network.target
 #ConditionPathExists=!/etc/ssh/sshd_not_to_be_run
 
 [Service]
-ExecStart=/usr/bin/fastcci_server 8080 /data/project/data
+ExecStart=/usr/bin/fastcci_server 8080 /tmp
 KillMode=process
 Restart=on-failure
 RestartPreventExitStatus=255
