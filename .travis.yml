@@ -1,4 +1,11 @@
+dist: trusty
+sudo: false
+
 language: cpp
+
+compiler:
+  - gcc
+  - clang
 
 addons:
   apt:
@@ -9,9 +16,10 @@ compiler:
   - gcc
 
 before_script:
-  - ./build_onion.sh
-  - mkdir build
-  - cd build
-  - cmake ..
+  - cd $TRAVIS_BUILD_DIR && mkdir -p build/onion
+  - cd build/onion && cmake -DCMAKE_INSTALL_PREFIX=$HOME ../../onion && make && make install
+  - cd $HOME && ls -la
 
-script: make
+script:
+  - cd $TRAVIS_BUILD_DIR && mkdir -p build/fastcci
+  - cd build/fastcci && cmake -DCMAKE_PREFIX_PATH=$HOME ../.. && make
