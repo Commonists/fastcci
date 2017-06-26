@@ -568,9 +568,12 @@ findFQV(int qi, resultList * r1)
 onion_connection_status
 handleStatus(void * d, onion_request * req, onion_response * res)
 {
+  onion_response_set_header(res, "Access-Control-Allow-Origin", "*");
+
   time_t now = time(NULL);
   double loadavg[3] = {0, 0, 0};
   getloadavg(loadavg, 3);
+
   pthread_mutex_lock(&mutex);
   onion_response_printf(res, "{\"queue\":%d,\"relsize\":%d,", bItem - aItem, maxcat);
   onion_response_printf(res,
@@ -579,10 +582,6 @@ handleStatus(void * d, onion_request * req, onion_response * res)
                         loadavg[0],
                         loadavg[1],
                         loadavg[2]);
-
-  // list all active queue items
-  // for (int i=aItem; i<bItem; ++i)
-  //  onion_response_printf(res, "");
 
   pthread_mutex_unlock(&mutex);
   return OCS_CLOSE_CONNECTION;
