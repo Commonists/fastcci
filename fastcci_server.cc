@@ -568,12 +568,17 @@ findFQV(int qi, resultList * r1)
 onion_connection_status
 handleStatus(void * d, onion_request * req, onion_response * res)
 {
-  pthread_mutex_lock(&mutex);
-  onion_response_printf(res, "%d requests in the queue.<br/>\n", bItem - aItem);
-  onion_response_printf(res, "%d category relations.<br/>\n", maxcat);
   time_t now = time(NULL);
-  onion_response_printf(
-      res, "%.f seconds since the last DB update.<br/>\n", difftime(now, treetime));
+  double loadavg[3] = {0, 0, 0};
+  getloadavg(loadavg, 3);
+  pthread_mutex_lock(&mutex);
+  onion_response_printf(res, "{\"queue\":%d,\"relsize\":%d,", bItem - aItem, maxcat);
+  onion_response_printf(res,
+                        "\"dbage\":%.f,\"load\":[%f,%f,%f]}",
+                        difftime(now, treetime),
+                        loadavg[0],
+                        loadavg[1],
+                        loadavg[2]);
 
   // list all active queue items
   // for (int i=aItem; i<bItem; ++i)
