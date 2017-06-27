@@ -18,8 +18,9 @@ compiler:
 before_script:
   - cd $TRAVIS_BUILD_DIR && mkdir -p build/onion
   - cd build/onion && cmake -DCMAKE_INSTALL_PREFIX=$HOME ../../onion && make && make install
-  - cd $HOME && ls -la
 
 script:
   - cd $TRAVIS_BUILD_DIR && mkdir -p build/fastcci
+  - export CXXFLAGS="-I $HOME/include -L $HOME/lib"
   - cd build/fastcci && cmake -DCMAKE_PREFIX_PATH=$HOME ../.. && make
+  - cd $TRAVIS_BUILD_DIR/test && ./runtests.sh
