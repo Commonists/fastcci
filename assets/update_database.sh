@@ -11,13 +11,7 @@ do
   # try three times to copy the files (in case the key is not available right after a puppet run) 
   for tries in `seq 3`
   do 
-    rsync -a fastcci.tree fastcci.cat fastcci-worker${server}:/tmp && break
-    sleep 30
-  done
-
-  for tries in `seq 3`
-  do 
-    rsync -a 'done' fastcci-worker${server}:/tmp && break
+    rsync -a fastcci.tree fastcci.cat fastcci-worker${server}:/tmp && rsync -a 'done' fastcci-worker${server}:/tmp && break
     sleep 30
   done
 

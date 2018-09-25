@@ -751,7 +751,8 @@ handleRequest(void * d, onion_request * req, onion_response * res)
       {
         case WS_WAITING:
           // send number of jobs ahead of this one in queue
-          onion_websocket_printf(ws, "WAITING %d", i - aItem);
+          if(!onion_websocket_printf(ws, "WAITING %d", i - aItem))
+            status = WS_DONE;
           break;
         case WS_PREPROCESS:
         case WS_COMPUTING:
