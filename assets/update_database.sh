@@ -6,7 +6,7 @@ cd /tmp
 query="select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!=\"page\" and page_namespace=14 and page_title=cl_to order by page_id;"
 
 set -o pipefail
-mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e "$query" --quick --batch --silent | fastcci_build_db || exit
+mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e "$query" --quick --batch --silent | fastcci_build_db || ( date >> $HOME/update_fail.log; exit )
 
 for server in 1 2 
 do
@@ -20,3 +20,5 @@ do
   # sleep two minutes to have staggered updates in the cluster
   sleep 120
 done
+
+date >> $HOME/update_success.log
