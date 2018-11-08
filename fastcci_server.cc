@@ -25,6 +25,7 @@ struct resultList
   {
     buf = (result_type *)malloc(max * sizeof *buf);
     mask = (unsigned char *)malloc(maxcat * sizeof *mask);
+    printf("mask size = %d\n", maxcat);
 
     if (buf == NULL || mask == NULL)
     {
@@ -263,7 +264,7 @@ fetchFiles(tree_type id, int depth, resultList * r1)
       if (r1->mask[r & cat_mask] == 0)
       {
         *dst++ = (r | d);
-        r1->mask[r] = f;
+        r1->mask[r & cat_mask] = f;
       }
     }
     r1->num += dst - old;
