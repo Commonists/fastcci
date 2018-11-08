@@ -210,7 +210,7 @@ resultQueue(int i, result_type item, unsigned char tag)
 //
 // Fetch all files in and below category 'id'
 // in a breadth first search up to depth 'depth'
-// if 'depth' id negative treat it as infinity
+// if 'depth' is negative treat it as infinity
 //
 void
 fetchFiles(tree_type id, int depth, resultList * r1)
@@ -236,17 +236,15 @@ fetchFiles(tree_type id, int depth, resultList * r1)
     int c = cat[i], cend = tree[c], cfile = tree[c + 1];
     c += 2;
 
-    // push all subcat to queue
+    // push all subcats to queue
     if (d < depth || depth < 0)
     {
       e = (d + 1) << depth_shift;
       while (c < cend)
       {
         // push unvisited categories (that are not empty, cat[id]==0) into the queue
-        if (r1->mask[tree[c]] == 0 && cat[tree[c]] > 0)
-        {
+        if (tree[c] < maxcat && r1->mask[tree[c]] == 0 && cat[tree[c]] > 0)
           rbPush(rb, tree[c] | e);
-        }
         c++;
       }
     }
@@ -261,7 +259,7 @@ fetchFiles(tree_type id, int depth, resultList * r1)
     while (len--)
     {
       r = (*src++);
-      if (r1->mask[r & cat_mask] == 0)
+      if ((r & cat_mask) < maxcat && r1->mask[r & cat_mask] == 0)
       {
         *dst++ = (r | d);
         r1->mask[r & cat_mask] = f;
