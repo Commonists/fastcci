@@ -229,6 +229,7 @@ fetchFiles(tree_type id, int depth, resultList * r1)
     r = rbPop(rb);
     d = (r & depth_mask) >> depth_shift;
     i = r & cat_mask;
+    if (i >= maxcat) continue;
 
     // tag current category as visited
     r1->mask[i] = 1;
@@ -322,7 +323,7 @@ tagCat(tree_type sid, int qi, int maxDepth, resultList * r1)
         }
 
         // push unvisited categories into the queue
-        if (r1->mask[tree[c]] == 0)
+        if (tree[c] < maxcat && r1->mask[tree[c]] == 0)
         {
           parent[tree[c]] = id;
           r1->mask[tree[c]] = 1;
@@ -420,7 +421,7 @@ notin(int qi, resultList * r1, resultList * r2)
   {
     r = r1->buf[i] & cat_mask;
 
-    if (r2->mask[r] == 0)
+    if (r < maxcat && r2->mask[r] == 0)
     {
       n++;
       // are we still below the offset?
@@ -472,6 +473,8 @@ intersect(int qi, resultList * r1, resultList * r2)
   for (i = 0; i < r1->num; ++i)
   {
     r = r1->buf[i] & cat_mask;
+    if (r >= maxcat) continue;
+
     m = r2->mask[r];
     if (m != 0)
     {
@@ -534,6 +537,8 @@ findFQV(int qi, resultList * r1)
     for (i = 0; i < r1->num; ++i)
     {
       r = r1->buf[i] & cat_mask;
+      if (r >= maxcat) continue;
+
       m = goodImages->mask[r];
       if (m != 0 && k == goodImages->tags[r])
       {
@@ -963,8 +968,11 @@ main(int argc, char * argv[])
     for (int j = 0; j < result[0]->num; j++)
     {
       r = result[0]->buf[j] & cat_mask;
-      goodImages->mask[r] = result[0]->mask[r];
-      goodImages->tags[r] = goodCats[i - 1][2];
+      if (r < maxcat)
+      {
+        goodImages->mask[r] = result[0]->mask[r];
+        goodImages->tags[r] = goodCats[i - 1][2];
+      }
     }
   }
   goodImages->num = -1;
