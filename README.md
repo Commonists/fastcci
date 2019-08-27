@@ -12,7 +12,7 @@ Fast Commons Category Inspection is an in-memory database for fast commons categ
 
 FastCCI can operate without depth limits on categories.
 
-```fastcci_build_db``` builds the binary database files form an SQL dump of the categorylinks database.
+```fastcci_build_db``` builds the binary database files from an SQL dump of the categorylinks database.
 
 ```fastcci_server``` is the database server backend that can be queried through HTTP.
 
@@ -52,7 +52,7 @@ For backwards compatibility with browsers that do not properly support cross-dom
 * ```d2``` The secondary search depth (defaults to infinity)
 * ```a``` The query action. Values can be:
   * ```and``` Perform the intersection between category ```c1``` and category ```c2``` (default action)
-  * ```not``` Fetch fils that are in category ```c1``` but not in category ```c2```
+  * ```not``` Fetch files that are in category ```c1``` but not in category ```c2```
   * ```list``` List all files in and below category ```c1```
   * ```fqv``` List all FPs, QIs, and VIs files (in that order) in and below category ```c1```
   * ```path``` Find the subcategory path from category ```c1``` to file or category ```c2```
@@ -66,7 +66,7 @@ The response is delivered in a simple text format with multiple lines. Each line
 
 * ```RESULT``` followed by a ```|``` separated list of  up to 50 integer triplets of the form ```pageId,depth,tag```. Each triplet stands for one image or category.
 * ```NOPATH``` indicates that no path from ```c1``` to ```c2``` in a ```a=path``` request was found.
-* ```OUTOF``` followed by an integer that is the number of total items in th the calculated result (rather than the number of returned items). This can be either an exact number (for ```a=list```) or an estimate (for ```a=and``` and ```a=not```).
+* ```OUTOF``` followed by an integer that is the number of total items in the calculated result (rather than the number of returned items). This can be either an exact number (for ```a=list```) or an estimate (for ```a=and``` and ```a=not```).
 * ```QUEUED``` is the immediate acknowledgement that the server has queued the current request.
 * ```WAITING``` is sent to the client with one integer value representing the number of requests that are ahead in the queue and will be processed before the current request.
 * ```WORKING``` followed by two integers representing the current number of items found in  ```c1``` and ```c2```. This response item is sent to the client every 0.2s and shows the current state of the ongoing category traversal.
@@ -74,15 +74,15 @@ The response is delivered in a simple text format with multiple lines. Each line
 
 ## Command line tools
 
-* ```fastcci_tarjan``` uses [Tarjan's Algorithm](https://en.wikipedia.org/wiki/Tarjan%E2%80%99s_strongly_connected_components_algorithm) to find _strongly coupled components_ in the category graph. Those are essentially conencted clusters of loops.
-* ```fastcci_circulartest``` uses a custom algorithm to find individual category loops. Unlike ```fastcci_tarjan``` this also catches self referencing categories. It may however ommit loops that share nodes with other loops. 
+* ```fastcci_tarjan``` uses [Tarjan's Algorithm](https://en.wikipedia.org/wiki/Tarjan%E2%80%99s_strongly_connected_components_algorithm) to find _strongly coupled components_ in the category graph. Those are essentially connected clusters of loops.
+* ```fastcci_circulartest``` uses a custom algorithm to find individual category loops. Unlike ```fastcci_tarjan``` this also catches self referencing categories. It may however omit loops that share nodes with other loops. 
 * ```fastcci_subcats cat_id``` outputs the direct subcategories of the category specified by ```cat_id``` (this is mostly for debugging).
 * ```fastcci_pfs_search P F S``` finds all categories with ```P``` parent categories, ```F``` number of files, and ```S``` subcategories.
 * ```fastcci_diamond``` finds all category _diamonds_ (i.e. B,C categories with a common parent A and a common subcategory D).
 
 ## Server setup
 
-### Sytemd
+### Systemd
 
 Copy the service file `assets/fastcci.service` to `/lib/systemd/system/fastcci.service` and symlink it to `/etc/systemd/system`. Register the service with
 
