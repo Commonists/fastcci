@@ -2,11 +2,18 @@
 
 # use /tmp because it is on a local filesystem
 cd /tmp
+rm -f done
+
+echo START `date` >> $HOME/update_database.log
 
 query="select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!=\"page\" and page_namespace=14 and page_title=cl_to order by page_id;"
 
 set -o pipefail
-mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.labsdb commonswiki_p -e "$query" --quick --batch --silent | fastcci_build_db || ( date >> $HOME/update_fail.log; exit )
+mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.analytics.db.svc.eqiad.wmflabs commonswiki_p -e "$query" --quick --batch --silent | fastcci_build_db ||
+{
+  echo FAILED `date` >> $HOME/update_database.log
+  exit
+}
 
 for server in 1 2 
 do
@@ -21,4 +28,4 @@ do
   sleep 120
 done
 
-date >> $HOME/update_success.log
+echo SUCCESS `date` >> $HOME/update_database.log
