@@ -505,7 +505,7 @@ intersect(int qi, resultList * r1, resultList * r2)
 }
 
 //
-// all FPs, QIs, VIs in c1 in that order
+// all FPs, FVs, QIs, VIs in c1 in that order
 //
 void
 findFQV(int qi, resultList * r1)
@@ -531,7 +531,7 @@ findFQV(int qi, resultList * r1)
   // loop over tags
   unsigned char k;
   int i;
-  for (k = 1; k <= 3; ++k)
+  for (k = 1; k <= 4; ++k)
   {
     // loop over c1 images
     for (i = 0; i < r1->num; ++i)
@@ -562,7 +562,7 @@ findFQV(int qi, resultList * r1)
   resultFlush(qi);
 
   // did we make it all the way to the end of the result set?
-  if (k == 4)
+  if (k == 5)
     resultPrintf(qi, "OUTOF %d", n - outstart);
   // otherwise make a crude guess
   else if (((k - 1) * r1->num + i) > 0)
@@ -949,17 +949,18 @@ main(int argc, char * argv[])
   if (pthread_create(&notify_thread, &attr, notifyThread, NULL))
     return 1;
 
-  // precompute a union of Commons FPs, Wikipedia FPs, QIs, and VIs
+  // precompute a union of Commons FPs, Wikipedia FPs, Commons FVs, QIs, and VIs
   int goodCats[][3] = {
       {3943817, 0, 1}, // [[Category:Featured_pictures_on_Wikimedia_Commons]]     (depth 0)
       {5799448, 1, 1}, // [[Category:Featured_pictures_on_Wikipedia_by_language]] (depth 1)
-      {3618826, 0, 2}, // [[Category:Quality_images]]                             (depth 0)
-      {4143367, 0, 3}  // [[Category:Valued_images_sorted_by_promotion_date]]     (depth 0)
+      {91039287, 0, 2}, // [[Category:Featured_media]]                            (depth 0)
+      {3618826, 0, 3}, // [[Category:Quality_images]]                             (depth 0)
+      {4143367, 0, 4}  // [[Category:Valued_images_sorted_by_promotion_date]]     (depth 0)
   };
   goodImages->clear();
   goodImages->addTags();
   result_type r;
-  for (int i = 4; i > 0; --i)
+  for (int i = 5; i > 0; --i)
   {
     printf("goodImages[%d]\n", i);
     result[0]->clear();
