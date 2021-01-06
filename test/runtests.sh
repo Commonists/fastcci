@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# clean up the server in case of test failure
+trap 'kill $(jobs -p)' EXIT
+
 PORT=9998
 FASTCCI_BIN=../build/fastcci
 WS='curl -s -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Host: localhost" -H "Sec-Websocket-Key: psst" -H "Sec-Websocket-Version: 13" http://localhost:'$PORT'/\?'
@@ -22,23 +25,33 @@ until $(curl -s  http://localhost:$PORT/status > /dev/null); do sleep 1; done
 
 # test a few queries via websockets
 echo '== Testing Websockets =='
-eval "$WS"'c1=1\&d1=15\&s=200\&a=fqv' | grep '^RESULT 5,0,1|4,0,1|7,1,2|8,1,3$' > /dev/null || exit 1
-eval "$WS"'c1=1\&d1=0\&s=200\&a=fqv' | grep '^RESULT 5,0,1|4,0,1$' > /dev/null || exit 1
-eval "$WS"'c1=3\&d1=15\&s=200\&a=fqv' | grep '^RESULT 8,0,3$' > /dev/null || exit 1
-eval "$WS"'c1=100\&c2=200' | grep '^RESULT 101,0,0|104,2,0$' > /dev/null || exit 1
-eval "$WS"'c1=100\&c2=200\&a=not' | grep '^RESULT 102,0,0|103,1,0$' > /dev/null || exit 1
+
+eval "$WS"'c1=1\&d1=15\&s=200\&a=fqv' | grep -a 'RESULT 5,0,1|4,0,1|7,1,3|8,1,4' > /dev/null || exit 1
+eval "$WS"'c1=1\&d1=15\&s=200\&a=fqv' | grep -a 'OUTOF 4' > /dev/null || exit 1
+
+eval "$WS"'c1=1\&d1=0\&s=200\&a=fqv' | grep -a 'RESULT 5,0,1|4,0,1' > /dev/null || exit 1
+eval "$WS"'c1=1\&d1=0\&s=200\&a=fqv' | grep -a 'OUTOF 2' > /dev/null || exit 1
+
+eval "$WS"'c1=3\&d1=15\&s=200\&a=fqv' | grep -a 'RESULT 8,0,4' > /dev/null || exit 1
+eval "$WS"'c1=3\&d1=15\&s=200\&a=fqv' | grep -a 'OUTOF 1' > /dev/null || exit 1
+
+eval "$WS"'c1=100\&c2=200' | grep -a 'RESULT 101,0,0|104,2,0' > /dev/null || exit 1
+eval "$WS"'c1=100\&c2=200' | grep -a 'OUTOF 2' > /dev/null || exit 1
+
+eval "$WS"'c1=100\&c2=200\&a=not' | grep -a 'RESULT 102,0,0|103,1,0' > /dev/null || exit 1
+eval "$WS"'c1=100\&c2=200\&a=not' | grep -a 'OUTOF 2' > /dev/null || exit 1
 echo 'passed.'
 echo
 
 # test a few HTTP queries
 echo '== Testing HTTP =='
-eval "$HTTP"'c1=1\&d1=15\&s=200\&a=fqv' | grep '^RESULT 5,0,1|4,0,1|7,1,2|8,1,3$' > /dev/null || exit 1
+eval "$HTTP"'c1=1\&d1=15\&s=200\&a=fqv' | grep '^RESULT 5,0,1|4,0,1|7,1,3|8,1,4$' > /dev/null || exit 1
 echo 'passed.'
 echo
 
 # test a few JS callback queries
 echo '== Testing JS Callback =='
-eval "$JS"'c1=1\&d1=15\&s=200\&a=fqv' | grep "fastcciCallback( \[ 'RESULT 5,0,1|4,0,1|7,1,2|8,1,3', 'OUTOF 4'," > /dev/null || exit 1
+eval "$JS"'c1=1\&d1=15\&s=200\&a=fqv' | grep "fastcciCallback( \[ 'RESULT 5,0,1|4,0,1|7,1,3|8,1,4', 'OUTOF 4'," > /dev/null || exit 1
 echo 'passed.'
 echo
 
