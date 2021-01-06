@@ -1,11 +1,12 @@
 #!/bin/bash
 
+PORT=9998
 FASTCCI_BIN=../build/fastcci
-WS='curl -s -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Host: localhost" -H "Sec-Websocket-Key: psst" -H "Sec-Websocket-Version: 1" http://localhost:8080/\?'
-HTTP='curl -s -i -N http://localhost:8080/\?'
-JS='curl -s -i -N http://localhost:8080/\?t=js\&'
+WS='curl -s -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Host: localhost" -H "Sec-Websocket-Key: psst" -H "Sec-Websocket-Version: 13" http://localhost:'$PORT'/\?'
+HTTP='curl -s -i -N http://localhost:'$PORT'/\?'
+JS='curl -s -i -N http://localhost:'$PORT'/\?t=js\&'
 
-# build the test database
+# build the test database/
 echo '== Building Database =='
 $FASTCCI_BIN/fastcci_build_db < test_dump.txt || exit 1
 [ $(md5sum 'done' | cut -c-8) = "d36f8f94" ] || exit 1
@@ -16,8 +17,8 @@ echo
 
 # launch server (and wait for it to spin up)
 export LD_LIBRARY_PATH=$HOME/lib:$LD_LIBRARY_PATH
-$FASTCCI_BIN/fastcci_server 8080 . > /dev/null 2>&1 &
-until $(curl -s  http://localhost:8080/status > /dev/null); do sleep 1; done
+$FASTCCI_BIN/fastcci_server $PORT . > /dev/null 2>&1 &
+until $(curl -s  http://localhost:$PORT/status > /dev/null); do sleep 1; done
 
 # test a few queries via websockets
 echo '== Testing Websockets =='
