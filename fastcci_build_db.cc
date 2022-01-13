@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
   }
 
   // write out binary tree files
-  munmap(cat, maxtree * sizeof *cat);
+  munmap(cat, maxcat * sizeof *cat);
   munmap(tree, maxtree * sizeof *tree);
   ftruncate(fd_tree, cfile * sizeof *tree);
   ftruncate(fd_cat, (lcl_to+1) * sizeof *cat);
