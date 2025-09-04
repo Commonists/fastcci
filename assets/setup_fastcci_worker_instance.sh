@@ -1,24 +1,24 @@
 #!/bin/bash
 
 # install prerequisites
-sudo apt-get -y install rsync make cmake gcc g++ libgnutls28-dev libgcrypt20-dev
+sudo apt-get -y install rsync make cmake gcc g++ libgnutls28-dev libgcrypt20-dev zlib1g-dev zlib1g
 
 # build onion http and websocket library
-cd $HOME/onion
-mkdir -p mybuild
-cd mybuild
+cd $HOME/fastcci
+mkdir -p build/onion
+cd build/onion
 make clean
-cmake ..
+cmake ../../onion
 make
 sudo make install
 sudo ldconfig
 
 # build the fastcci server and database builder
 cd $HOME/fastcci
-mkdir -p mybuild
-cd mybuild
+mkdir -p build/fastcci
+cd build/fastcci
 make clean
-cmake ..
+cmake ../..
 make
 sudo make install
 
