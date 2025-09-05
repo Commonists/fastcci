@@ -165,6 +165,9 @@ resultStart(int i)
 {
   onion_response * res = queue[i].res;
   onion_websocket * ws = queue[i].ws;
+  // reset per-request result buffer state
+  resnumqueue = 0;
+  residx = 0;
 
   if (res && queue[i].connection == WC_JS)
     onion_response_printf(res, "fastcciCallback( [");
@@ -380,8 +383,11 @@ traverse(int qi, resultList * r1)
   onion_response * res = queue[qi].res;
   onion_websocket * ws = queue[qi].ws;
 
-  // output selected subset
+  // notify waiter about status change
+  pthread_mutex_lock(&(queue[qi].mutex));
   queue[qi].status = WS_STREAMING;
+  pthread_cond_signal(&(queue[qi].cond));
+  pthread_mutex_unlock(&(queue[qi].mutex));
   if (outend > r1->num)
     outend = r1->num;
 
@@ -414,7 +420,10 @@ notin(int qi, resultList * r1, resultList * r2)
   fprintf(stderr, "using mask strategy.\n");
 
   // perform subtraction
+  pthread_mutex_lock(&(queue[qi].mutex));
   queue[qi].status = WS_STREAMING;
+  pthread_cond_signal(&(queue[qi].cond));
+  pthread_mutex_unlock(&(queue[qi].mutex));
   result_type r;
   int i;
   for (i = 0; i < r1->num; ++i)
@@ -466,7 +475,10 @@ intersect(int qi, resultList * r1, resultList * r2)
   }
 
   // perform intersection
+  pthread_mutex_lock(&(queue[qi].mutex));
   queue[qi].status = WS_STREAMING;
+  pthread_cond_signal(&(queue[qi].cond));
+  pthread_mutex_unlock(&(queue[qi].mutex));
   result_type r, m;
 
   int i;
@@ -525,7 +537,10 @@ findFQV(int qi, resultList * r1)
   }
 
   // perform intersection
+  pthread_mutex_lock(&(queue[qi].mutex));
   queue[qi].status = WS_STREAMING;
+  pthread_cond_signal(&(queue[qi].cond));
+  pthread_mutex_unlock(&(queue[qi].mutex));
   result_type r, m;
 
   // loop over tags
@@ -633,7 +648,10 @@ handleRequest(void * d, onion_request * req, onion_response * res)
   queue[i].o = oparam ? atoi(oparam) : 0;
   queue[i].s = sparam ? atoi(sparam) : 100;
 
+  // mark initial status
+  pthread_mutex_lock(&(queue[i].mutex));
   queue[i].status = WS_WAITING;
+  pthread_mutex_unlock(&(queue[i].mutex));
 
   const char * aparam = onion_request_get_query(req, "a");
 
@@ -789,7 +807,11 @@ notifyThread(void * d)
     // loop over all active queue items (actually lock &mutex as well!)
     for (int i = aItem; i < bItem; ++i)
       if (queue[i].connection == WC_SOCKET)
+      {
+        pthread_mutex_lock(&(queue[i].mutex));
         pthread_cond_signal(&(queue[i].cond));
+        pthread_mutex_unlock(&(queue[i].mutex));
+      }
 
     pthread_mutex_unlock(&mutex);
     pthread_mutex_unlock(&handlerMutex);
@@ -815,12 +837,22 @@ computeThread(void * d)
 
       // signal start of compute
       resultStart(i);
+      // mark request as preprocessing/working
+      pthread_mutex_lock(&(queue[i].mutex));
+      queue[i].status = WS_PREPROCESS;
+      pthread_cond_signal(&(queue[i].cond));
+      pthread_mutex_unlock(&(queue[i].mutex));
 
-      int nr;
+      int nr = 0;
       if (queue[i].type == WT_PATH)
       {
         // path finding
         result[0]->clear();
+        // mark as streaming for path responses
+        pthread_mutex_lock(&(queue[i].mutex));
+        queue[i].status = WS_STREAMING;
+        pthread_cond_signal(&(queue[i].cond));
+        pthread_mutex_unlock(&(queue[i].mutex));
         tagCat(queue[i].c1, i, queue[i].d1, result[0]);
       }
       else
@@ -828,7 +860,10 @@ computeThread(void * d)
         // boolean operations (AND, LIST, NOTIN)
         result[0]->num = 0;
         result[1]->num = 0;
+        pthread_mutex_lock(&(queue[i].mutex));
         queue[i].status = WS_PREPROCESS;
+        pthread_cond_signal(&(queue[i].cond));
+        pthread_mutex_unlock(&(queue[i].mutex));
 
         // generate intermediate results
         int cid[2] = {queue[i].c1, queue[i].c2};
@@ -846,7 +881,10 @@ computeThread(void * d)
         }
 
         // compute result
+        pthread_mutex_lock(&(queue[i].mutex));
         queue[i].status = WS_COMPUTING;
+        pthread_cond_signal(&(queue[i].cond));
+        pthread_mutex_unlock(&(queue[i].mutex));
 
         switch (queue[i].type)
         {
@@ -872,10 +910,14 @@ computeThread(void * d)
 
       // done with this request
       resultDone(i);
+      pthread_mutex_lock(&(queue[i].mutex));
+      queue[i].status = WS_DONE;
+      pthread_cond_signal(&(queue[i].cond));
+      pthread_mutex_unlock(&(queue[i].mutex));
 
       // try to shrink result buffers uses in this request
       for (int j = 0; j < nr; ++j)
-        result[0]->shrink();
+        result[j]->shrink();
 
       // pop item off queue
       pthread_mutex_lock(&mutex);
@@ -883,9 +925,7 @@ computeThread(void * d)
       pthread_mutex_unlock(&mutex);
 
       // wake up thread to finish connection
-      pthread_mutex_lock(&handlerMutex);
-      pthread_cond_signal(&(queue[i].cond));
-      pthread_mutex_unlock(&handlerMutex);
+      // Already signaled above under queue[i].mutex
     }
   }
 }
@@ -938,6 +978,13 @@ main(int argc, char * argv[])
   pthread_attr_t attr;
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+  // initialize per-queue synchronization primitives
+  for (int qi = 0; qi < maxItem; ++qi)
+  {
+    pthread_mutex_init(&(queue[qi].mutex), NULL);
+    pthread_cond_init(&(queue[qi].cond), NULL);
+  }
 
   // setup compute thread
   pthread_t compute_thread;
