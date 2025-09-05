@@ -68,13 +68,14 @@ def stream_batch(conn, lo, hi, fetch_size, sink_stdin):
     Execute one batched SELECT and stream rows (TSV) to sink_stdin.
     """
     sql = (
-        "SELECT /* SLOW_OK */ cl_from, page_id, cl_type "
-        "FROM categorylinks "
-        "JOIN page ON page_id >= %s AND page_id < %s "
-        "  AND page_namespace = 14 "
-        "  AND page_title = cl_to "
-        "WHERE cl_type != 'page' "
-        "ORDER BY page_id;"
+        "SELECT /* SLOW_OK */ cl.cl_from, p.page_id, cl.cl_type "
+        "FROM page AS p "
+        "STRAIGHT_JOIN categorylinks AS cl "
+        "ON p.page_namespace = 14 "
+        "AND cl.cl_to        = p.page_title "
+        "WHERE p.page_id >= %s AND p.page_id < %s "
+        "AND cl.cl_type IN ('subcat','file') "
+        "ORDER BY p.page_id;"
     )
     # Note: the range predicate lives in the JOIN to keep optimizer behavior
     # close to your original implicit join (but explicit JOIN is clearer).
@@ -89,6 +90,8 @@ def stream_batch(conn, lo, hi, fetch_size, sink_stdin):
             # Stream as TSV lines (no header), matching mysql --batch --silent
             out = []
             for cl_from, page_id, cl_type in rows:
+                if isinstance(cl_type, (bytes, bytearray)):
+                    cl_type = cl_type.decode("utf-8", "strict")
                 out.append(f"{cl_from}\t{page_id}\t{cl_type}\n")
             sink_stdin.write("".join(out).encode("utf-8", errors="strict"))
             sink_stdin.flush()

@@ -6,10 +6,8 @@ rm -f done
 
 echo START `date` >> $HOME/update_database.log
 
-query="select /* SLOW_OK */ cl_from, page_id, cl_type from categorylinks,page where cl_type!=\"page\" and page_namespace=14 and page_title=cl_to order by page_id;"
-
-set -o pipefail
-mysql --defaults-file=$HOME/replica.my.cnf -h commonswiki.analytics.db.svc.eqiad.wmflabs commonswiki_p -e "$query" --quick --batch --silent | fastcci_build_db ||
+. $HOME/venv/bin/activate
+$HOME/bin/stream_database.py --defaults-file "$HOME/replica.my.cnf" --host commonswiki.analytics.db.svc.eqiad.wmflabs --db commonswiki_p --batch-size 100000 --fetch-size 10000 ||
 {
   echo FAILED `date` >> $HOME/update_database.log
   exit
