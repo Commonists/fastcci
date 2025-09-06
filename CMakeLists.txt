@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 2.6)
 project(fastcci)
 
-# HTTP database server
-add_executable(fastcci_server fastcci_server.cc)
+# HTTP database server (libwebsockets)
+add_executable(fastcci_server fastcci_server_lws.cc)
 LINK_DIRECTORIES(/usr/local/lib)
-target_link_libraries(fastcci_server onion pthread)
+target_link_libraries(fastcci_server websockets pthread)
 
 # build the DB files
 add_executable(fastcci_build_db fastcci_build_db.cc)
