@@ -335,9 +335,9 @@ static void computeThread(){
 struct pss_http {
   lws *wsi = nullptr;
   bool js = false;
-  // outgoing queue of lines to send
-  std::mutex qmtx;
-  std::deque<std::string> q;
+  // outgoing queue of lines to send (heap-allocated: LWS does not run C++ ctors)
+  std::mutex *qmtx = nullptr;
+  std::deque<std::string> *q = nullptr;
   // partial write
   std::string pend;
   size_t sent = 0;
@@ -353,12 +353,14 @@ struct pss_ws {
   lws_ring *ring = nullptr;
   uint32_t tail = 0;
   WorkItem *wi = nullptr;
+  // parsed params (pre-upgrade)
+  int c1=-1,c2=-1,d1=-1,d2=-1,o=0,s=100; std::string a;
 };
 
 static inline void http_queue(pss_http *ph, const std::string &s){
-  if (!ph) return;
-  std::lock_guard<std::mutex> lk(ph->qmtx);
-  ph->q.push_back(s);
+  if (!ph || !ph->qmtx || !ph->q) return;
+  std::lock_guard<std::mutex> lk(*(ph->qmtx));
+  ph->q->push_back(s);
   if (ph->wsi) lws_callback_on_writable(ph->wsi);
 }
 static inline void http_emit_line(pss_http *ph, const std::string &s){
@@ -398,6 +400,9 @@ static inline int toi(const std::string &s, int defv){ if (s.empty()) return def
 static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len){
   auto *pss = (pss_http*)user;
   switch (reason){
+    case LWS_CALLBACK_FILTER_HTTP_CONNECTION:
+      // Pre-upgrade filter: do not serve anything here; let WS proceed
+      return 0;
     case LWS_CALLBACK_HTTP: {
       // If upgrade, let WS protocol handle it
 #if defined(lws_http_is_upgrade)
@@ -485,6 +490,9 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void
 
       // bind HTTP pss + queue item
       pss->wsi = wsi; pss->js = use_js; pss->wi = &wi;
+      // allocate per-conn queue + mutex
+      pss->qmtx = new std::mutex();
+      pss->q = new std::deque<std::string>();
       wi.connection = use_js ? WC_JS : WC_XHR; wi.ph = pss; wi.pw = nullptr;
 
       // enqueue job
@@ -521,8 +529,10 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void
       // pop next line
       std::string out;
       {
-        std::lock_guard<std::mutex> lk(pss->qmtx);
-        if (!pss->q.empty()){ out = std::move(pss->q.front()); pss->q.pop_front(); }
+        if (pss->qmtx && pss->q){
+          std::lock_guard<std::mutex> lk(*(pss->qmtx));
+          if (!pss->q->empty()){ out = std::move(pss->q->front()); pss->q->pop_front(); }
+        }
       }
       if (!out.empty()){
         pss->pend = std::move(out); pss->sent = 0;
@@ -533,8 +543,13 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void
       // If the job is done and no more output, finalize HTTP
       if (pss->wi && pss->wi->status == WS_DONE){
         if (pss->js) { // close callback array if JS
-          std::lock_guard<std::mutex> lk(pss->qmtx);
-          if (pss->q.empty()) {
+          if (pss->qmtx && pss->q) {
+            std::lock_guard<std::mutex> lk(*(pss->qmtx));
+            if (pss->q->empty()) {
+              const char tail[] = " 'DONE'] );\n";
+              lws_write(wsi, (unsigned char*)tail, (unsigned int)strlen(tail), LWS_WRITE_HTTP);
+            }
+          } else {
             // send the JS tail and close
             const char tail[] = " 'DONE'] );\n";
             lws_write(wsi, (unsigned char*)tail, (unsigned int)strlen(tail), LWS_WRITE_HTTP);
@@ -549,6 +564,11 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void
       return 0;
     }
     case LWS_CALLBACK_CLOSED_HTTP:
+      // free per-conn HTTP resources
+      if (pss){
+        if (pss->q){ delete pss->q; pss->q = nullptr; }
+        if (pss->qmtx){ delete pss->qmtx; pss->qmtx = nullptr; }
+      }
       return 0;
     default:
       return 0;
@@ -559,8 +579,29 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void
 static int callback_ws(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len){
   auto *pss = (pss_ws*)user;
   switch (reason){
-    case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION:
+    case LWS_CALLBACK_FILTER_HTTP_CONNECTION:
+      // Pre-upgrade filter: do not serve anything here; let WS proceed
       return 0;
+    case LWS_CALLBACK_FILTER_PROTOCOL_CONNECTION: {
+      // Parse query pre-upgrade to avoid token availability issues after upgrade
+      char uri[256]; if (lws_hdr_copy(wsi, uri, sizeof(uri), WSI_TOKEN_GET_URI) <= 0) uri[0]=0;
+      const char *q = strchr(uri,'?'); if (!q) q=""; else q++;
+      auto getv=[&](const char* key)->std::string{
+        size_t klen=strlen(key); const char* p=q;
+        while (p && *p){ const char* amp=strchr(p,'&'); size_t len= amp? (size_t)(amp-p): strlen(p);
+          if (len>klen && !strncmp(p,key,klen) && p[klen]=='=') return std::string(p+klen+1, len-(klen+1));
+          p = amp? amp+1: nullptr; }
+        return std::string(); };
+      auto toi2=[&](const std::string &s,int d){ if(s.empty()) return d; char *e=nullptr; long v=strtol(s.c_str(),&e,10); if(e&&*e) return d; return (int)v; };
+      std::string s;
+      s=getv("c1"); pss->c1 = toi2(s,-1);
+      s=getv("c2"); pss->c2 = s.empty()? pss->c1 : toi2(s,-1);
+      s=getv("d1"); pss->d1 = toi2(s,-1);
+      s=getv("d2"); pss->d2 = toi2(s,-1);
+      s=getv("o");  pss->o  = toi2(s,0);
+      s=getv("s");  pss->s  = toi2(s,100);
+      pss->a = getv("a");
+      return 0; }
     case LWS_CALLBACK_ESTABLISHED: {
       // parse query
       std::string c1s = get_arg_http(wsi, "c1");
@@ -622,7 +663,15 @@ static int callback_ws(struct lws *wsi, enum lws_callback_reasons reason, void *
       return 0;
     }
     case LWS_CALLBACK_CLOSED:
-      if (pss && pss->ring) { lws_ring_destroy(pss->ring); pss->ring = nullptr; }
+      if (pss) {
+        // detach work item so compute thread stops emitting to a freed pss
+        if (pss->wi) {
+          WorkItem *wi = pss->wi;
+          wi->pw = nullptr;           // drop WS backpointer
+          // do not flip connection type; just prevent ws_emit_line
+        }
+        if (pss->ring) { lws_ring_destroy(pss->ring); pss->ring = nullptr; }
+      }
       return 0;
     default:
       return 0;
@@ -717,7 +766,8 @@ int main(int argc, char *argv[]){
     { nullptr, nullptr, 0, 0 }
   };
   info.protocols = protocols;
-  info.options = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
+  // Keep options minimal to avoid interfering with WS upgrade
+  // info.options = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
   info.timeout_secs = 3600;
 
   lws_context *context = lws_create_context(&info);
