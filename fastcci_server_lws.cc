@@ -433,7 +433,11 @@ done:
 static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len){
   (void)in; (void)len; auto *pss = (pss_http*)user;
   switch (reason){
-    case LWS_CALLBACK_HTTP: {
+  case LWS_CALLBACK_HTTP: {
+    // If this is a WebSocket Upgrade request, do not send HTTP headers here.
+    // Let lws perform the WS handshake and route to the WS protocol.
+    if (lws_hdr_total_length(wsi, WSI_TOKEN_UPGRADE) > 0)
+      return 0;
       // path routing: status vs compute
       char uri[256]; if (lws_hdr_copy(wsi, uri, sizeof(uri), WSI_TOKEN_GET_URI) <= 0) uri[0] = 0;
       if (strcmp(uri, "/status") == 0){
