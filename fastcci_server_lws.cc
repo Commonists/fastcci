@@ -88,7 +88,11 @@ struct Query {
   int o = 0, s = 100;
   std::string a = "and"; // and|not|fqv|list|path
 };
-static int64_t to_i64(const char* s) { return s ? strtoll(s, nullptr, 10) : -1; }
+static int64_t to_i64(const char* s) {
+  if (!s) return -1;
+  if (*s == '\0') return -1; // treat empty as not provided
+  return strtoll(s, nullptr, 10);
+}
 static std::string get_arg(struct lws *wsi, const char *key) {
   char frag[256];
   const size_t klen = strlen(key);
@@ -146,11 +150,15 @@ static void result_queue(const std::function<void(const std::string&)>& emit, Ac
   if (++acc.count == Accum::maxqueue) result_flush(emit, acc);
 }
 
+// Forward declare work item for cooperative cancel checks
+struct WorkItem;
+
 // --------------------- Core compute (reused) ---------------------
-void fetchFiles(tree_type id, int depth, resultList * r1){
+void fetchFiles(tree_type id, int depth, resultList * r1, std::atomic_bool *cancel = nullptr){
   rbClear(rb); rbPush(rb, id);
   result_type r, d, e, i; unsigned char f; int c, len;
   while (!rbEmpty(rb)){
+    if (cancel && cancel->load()) break;
     r = rbPop(rb);
     d = (r & depth_mask) >> depth_shift;
     i = r & cat_mask;
@@ -161,6 +169,7 @@ void fetchFiles(tree_type id, int depth, resultList * r1){
     if (d < depth || depth < 0){
       e = (d + 1) << depth_shift;
       while (c < cend){
+        if (cancel && cancel->load()) break;
         if (tree[c] < maxcat && r1->mask[tree[c]] == 0 && cat[tree[c]] > 0)
           rbPush(rb, tree[c] | e);
         c++;
@@ -171,6 +180,7 @@ void fetchFiles(tree_type id, int depth, resultList * r1){
     f = d < 254 ? (d + 1) : 255;
     d = d << depth_shift;
     while (len--){
+      if (cancel && cancel->load()) break;
       r = (*src++);
       if ((r & cat_mask) < maxcat && r1->mask[r & cat_mask] == 0){
         *dst++ = (r | d);
@@ -284,13 +294,26 @@ enum JobStatus { JS_WAITING, JS_PREPROCESS, JS_COMPUTING, JS_STREAMING, JS_DONE 
 
 struct WorkItem;
 
-// HTTP per-conn state
-struct pss_http { std::deque<std::string> q; std::mutex qmtx; std::atomic_bool closed{false}; WorkItem *wi{nullptr}; lws *wsi{nullptr}; bool js{false}; bool js_header_sent{false}; };
+// HTTP per-conn state (POD fields only; allocate STL on heap)
+struct pss_http {
+  std::deque<std::string> *q{nullptr};
+  std::mutex *qmtx{nullptr};
+  bool closed{false};
+  WorkItem *wi{nullptr};
+  lws *wsi{nullptr};
+  bool js{false};
+  bool js_header_sent{false};
+  // partial write buffer
+  char *pend{nullptr};
+  size_t pend_len{0};
+  size_t pend_off{0};
+  bool pend_after_final{false};
+};
 
 // WS per-conn state
 struct msg { char *data; size_t len; };
 static void destroy_msg(void *p){ auto *m = (msg*)p; if (m && m->data) free(m->data); }
-struct pss_ws { lws_ring *ring = nullptr; uint32_t tail = 0; std::atomic_bool closed{false}; WorkItem *wi{nullptr}; lws *wsi{nullptr}; };
+struct pss_ws { lws_ring *ring = nullptr; uint32_t tail = 0; bool closed{false}; WorkItem *wi{nullptr}; lws *wsi{nullptr}; };
 
 struct WorkItem {
   Query q;
@@ -298,6 +321,7 @@ struct WorkItem {
   JobStatus status{JS_WAITING};
   pss_http *ph{nullptr};
   pss_ws *pw{nullptr};
+  std::atomic_bool cancel{false};
 };
 
 static std::mutex gq_mtx;
@@ -306,13 +330,13 @@ static std::deque<WorkItem*> gqueue;
 static WorkItem *g_current = nullptr; // item being processed
 
 static void emit_to_http(pss_http *ph, const std::string &line){
-  if (!ph || ph->closed.load()) return;
+  if (!ph || ph->closed || !ph->q || !ph->qmtx) return;
   std::string s = line;
-  { std::lock_guard<std::mutex> lk(ph->qmtx); ph->q.push_back(s); }
+  { std::lock_guard<std::mutex> lk(*(ph->qmtx)); ph->q->push_back(s); }
   if (ph->wsi) lws_callback_on_writable(ph->wsi);
 }
 static void emit_to_ws(pss_ws *pw, const std::string &line){
-  if (!pw || pw->closed.load() || !pw->ring) return;
+  if (!pw || pw->closed || !pw->ring) return;
   msg m; m.len = line.size(); m.data = (char*)malloc(m.len); memcpy(m.data, line.data(), m.len);
   lws_ring_insert(pw->ring, &m, 1);
   if (pw->wsi) lws_callback_on_writable(pw->wsi);
@@ -330,16 +354,16 @@ static void job_result_queue(WorkItem *wi, Accum &acc, result_type item, unsigne
 static void tagCat_emit_item(tree_type sid, tree_type did, int maxDepth, resultList * r1, WorkItem *wi){
   rbClear(rb); bool c2isFile = (cat[did] < 0); int depth = -1; result_type id = sid; rbPush(rb, sid);
   result_type r, d, e, ld = -1; int c; bool foundPath = false;
-  while (!rbEmpty(rb) && !foundPath){ r = rbPop(rb); d = (r & depth_mask) >> depth_shift; id = r & cat_mask; if (d != ld){ depth++; ld = d; }
+  while (!rbEmpty(rb) && !foundPath){ if (wi && wi->cancel.load()) break; r = rbPop(rb); d = (r & depth_mask) >> depth_shift; id = r & cat_mask; if (d != ld){ depth++; ld = d; }
     int c = cat[id], cend = tree[c], cend2 = tree[c + 1]; c += 2; if (depth < maxDepth || maxDepth < 0){ e = (d + 1) << depth_shift; while (c < cend){ if (tree[c] == did){ parent[did] = id; id = did; foundPath = true; break; } if (tree[c] < maxcat && r1->mask[tree[c]] == 0){ parent[tree[c]] = id; r1->mask[tree[c]] = 1; rbPush(rb, tree[c] | e);} c++; } }
     if (c2isFile){ for (c = cend; c < cend2; ++c) if (tree[c] == did){ foundPath = true; break; } } }
   Accum acc; if (foundPath){ int i = 0; while (true){ history[i++] = id; if (id == sid) break; id = parent[id]; } int len = i; while (i--) job_result_queue(wi, acc, history[i] + (result_type(len - i) << depth_shift), 0); job_result_flush(wi, acc); } else { emit_item(wi, "NOPATH\n"); }
 }
 
-static void traverse_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1){ Accum acc; int outend = outstart + outsize; if (outend > r1->num) outend = r1->num; for (int i = outstart; i < outend; ++i){ result_type r = r1->buf[i] & cat_mask; job_result_queue(wi, acc, r1->buf[i], r1->tags == NULL ? goodImages->tags[r] : r1->tags[r]); } job_result_flush(wi, acc); job_result_printf(wi, "OUTOF %d", r1->num); }
-static void notin_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1, resultList *r2){ Accum acc; int n = 0, i; int outend = outstart + outsize; result_type r; for (i = 0; i < r1->num; ++i){ r = r1->buf[i] & cat_mask; if (r < maxcat && r2->mask[r] == 0){ n++; if (n <= outstart) continue; job_result_queue(wi, acc, r1->buf[i], r1->tags == NULL ? goodImages->tags[r] : r1->tags[r]); if (n >= outend) break; } } job_result_flush(wi, acc); if (i == r1->num) job_result_printf(wi, "OUTOF %d", n - outstart); else if (i > 0) job_result_printf(wi, "OUTOF %d", (outend * r1->num) / i); }
-static void intersect_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1, resultList *r2){ Accum acc; int n = 0; int outend = outstart + outsize; if (r2->num == 0){ job_result_printf(wi, "OUTOF %d", 0); return; } for (int i = 0; i < r1->num; ++i){ result_type r = r1->buf[i] & cat_mask; if (r >= maxcat) continue; result_type m = r2->mask[r]; if (m != 0){ n++; if (n <= outstart) continue; job_result_queue(wi, acc, r1->buf[i] + ((m - 1) << depth_shift), r2->tags == NULL ? goodImages->tags[r] : r2->tags[r]); if (n >= outend) break; } } job_result_flush(wi, acc); job_result_printf(wi, "OUTOF %d", n - outstart); }
-static void findFQV_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1){ if (r1->num == 0){ job_result_printf(wi, "OUTOF %d", 0); return; } Accum acc; int n = 0; unsigned char k; int i, outend = outstart + outsize; result_type r, m; for (k = 1; k <= 4; ++k){ for (i = 0; i < r1->num; ++i){ r = r1->buf[i] & cat_mask; if (r >= maxcat) continue; m = goodImages->mask[r]; if (m != 0 && k == goodImages->tags[r]){ n++; if (n <= outstart) continue; job_result_queue(wi, acc, r1->buf[i] + ((m - 1) << depth_shift), goodImages->tags[r]); if (n >= outend) break; } } if (n >= outend) break; } job_result_flush(wi, acc); if (k == 5) job_result_printf(wi, "OUTOF %d", n - outstart); else if (((k - 1) * r1->num + i) > 0) job_result_printf(wi, "OUTOF %d", (outend * r1->num * 3) / ((k - 1) * r1->num + i)); }
+static void traverse_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1){ Accum acc; int outend = outstart + outsize; if (outend > r1->num) outend = r1->num; for (int i = outstart; i < outend; ++i){ if (wi && wi->cancel.load()) break; result_type r = r1->buf[i] & cat_mask; job_result_queue(wi, acc, r1->buf[i], r1->tags == NULL ? goodImages->tags[r] : r1->tags[r]); } job_result_flush(wi, acc); job_result_printf(wi, "OUTOF %lld", (long long)r1->num); }
+static void notin_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1, resultList *r2){ Accum acc; long long n = 0; int i; int outend = outstart + outsize; result_type r; for (i = 0; i < r1->num; ++i){ if (wi && wi->cancel.load()) break; r = r1->buf[i] & cat_mask; if (r < maxcat && r2->mask[r] == 0){ n++; if (n <= outstart) continue; job_result_queue(wi, acc, r1->buf[i], r1->tags == NULL ? goodImages->tags[r] : r1->tags[r]); if (n >= outend) break; } } job_result_flush(wi, acc); if (i == r1->num) job_result_printf(wi, "OUTOF %lld", n - (long long)outstart < 0 ? 0LL : n - (long long)outstart); else if (i > 0) { long long est = ((long long)outend * (long long)r1->num) / i; job_result_printf(wi, "OUTOF %lld", est < 0 ? 0LL : est); } }
+static void intersect_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1, resultList *r2){ Accum acc; long long n = 0; int outend = outstart + outsize; if (r2->num == 0){ job_result_printf(wi, "OUTOF %d", 0); return; } for (int i = 0; i < r1->num; ++i){ if (wi && wi->cancel.load()) break; result_type r = r1->buf[i] & cat_mask; if (r >= maxcat) continue; result_type m = r2->mask[r]; if (m != 0){ n++; if (n <= outstart) continue; job_result_queue(wi, acc, r1->buf[i] + ((m - 1) << depth_shift), r2->tags == NULL ? goodImages->tags[r] : r2->tags[r]); if (n >= outend) break; } } job_result_flush(wi, acc); long long rem = n - (long long)outstart; job_result_printf(wi, "OUTOF %lld", rem < 0 ? 0LL : rem); }
+static void findFQV_emit_item(WorkItem *wi, int outstart, int outsize, resultList *r1){ if (r1->num == 0){ job_result_printf(wi, "OUTOF %d", 0); return; } Accum acc; long long n = 0; unsigned char k; int i, outend = outstart + outsize; result_type r, m; for (k = 1; k <= 4; ++k){ for (i = 0; i < r1->num; ++i){ if (wi && wi->cancel.load()) break; r = r1->buf[i] & cat_mask; if (r >= maxcat) continue; m = goodImages->mask[r]; if (m != 0 && k == goodImages->tags[r]){ n++; if (n <= outstart) continue; job_result_queue(wi, acc, r1->buf[i] + ((m - 1) << depth_shift), goodImages->tags[r]); if (n >= outend) break; } } if (wi && wi->cancel.load()) break; if (n >= outend) break; } job_result_flush(wi, acc); if (k == 5) { long long rem = n - (long long)outstart; job_result_printf(wi, "OUTOF %lld", rem < 0 ? 0LL : rem); } else if (((long long)(k - 1) * (long long)r1->num + i) > 0) { long long est = ((long long)outend * (long long)r1->num * 3) / ((long long)(k - 1) * (long long)r1->num + i); job_result_printf(wi, "OUTOF %lld", est < 0 ? 0LL : est); } }
 
 static void compute_thread_fn(){
   for(;;){
@@ -351,28 +375,47 @@ static void compute_thread_fn(){
     }
     if (!wi) continue;
     int nr = 0; // number of result lists used
+
+    // start (announce early)
+    wi->status = JS_PREPROCESS; job_result_start(wi);
     // validate input
-    if (wi->q.c1 < 0 || wi->q.c1 >= maxcat) { job_result_done(wi); goto done; }
+    if (wi->q.c1 < 0 || wi->q.c1 >= maxcat) {
+      job_result_printf(wi, "ERROR C1RANGE %lld maxcat %d", (long long)wi->q.c1, maxcat);
+      job_result_printf(wi, "OUTOF %d", 0);
+      job_result_done(wi); goto done;
+    }
     {
       int c2 = (wi->q.c2 >= 0 ? (int)wi->q.c2 : (int)wi->q.c1);
-      if (c2 < 0 || c2 >= maxcat) { job_result_done(wi); goto done; }
-      if (isFile((int)wi->q.c1) || (isFile(c2) && wi->q.a != "path")) { job_result_done(wi); goto done; }
+      if (c2 < 0 || c2 >= maxcat) {
+        job_result_printf(wi, "ERROR C2RANGE %d maxcat %d", c2, maxcat);
+        job_result_printf(wi, "OUTOF %d", 0);
+        job_result_done(wi); goto done;
+      }
+      if (isFile((int)wi->q.c1)) {
+        job_result_printf(wi, "ERROR C1ISFILE %lld cat=%d", (long long)wi->q.c1, (int)cat[wi->q.c1]);
+        job_result_printf(wi, "OUTOF %d", 0);
+        job_result_done(wi); goto done;
+      }
+      if (isFile(c2) && wi->q.a != std::string("path")) {
+        job_result_printf(wi, "ERROR C2ISFILE %d cat=%d", c2, (int)cat[c2]);
+        job_result_printf(wi, "OUTOF %d", 0);
+        job_result_done(wi); goto done;
+      }
     }
-
-    // start
-    wi->status = JS_PREPROCESS; job_result_start(wi);
 
     if (wi->q.a == std::string("path")){
       result[0]->clear(); wi->status = JS_STREAMING; tagCat_emit_item((tree_type)wi->q.c1, (tree_type)(wi->q.c2>=0?wi->q.c2:wi->q.c1), (int)wi->q.d1, result[0], wi);
     } else {
       result[0]->num = 0; result[1]->num = 0; int cid[2] = {(int)wi->q.c1, (int)(wi->q.c2>=0?wi->q.c2:wi->q.c1)}; int depth[2] = {(int)wi->q.d1, (int)wi->q.d2};
       nr = (wi->q.a == "list" || wi->q.a == "fqv") ? 1 : 2;
-      for (int j = 0; j < nr; ++j){ result[j]->clear(); fetchFiles(cid[j], depth[j], result[j]); }
+      for (int j = 0; j < nr; ++j){ result[j]->clear(); fetchFiles(cid[j], depth[j], result[j], &wi->cancel); if (wi->cancel.load()) break; }
       wi->status = JS_COMPUTING;
-      if (wi->q.a == "list") traverse_emit_item(wi, wi->q.o, wi->q.s, result[0]);
-      else if (wi->q.a == "fqv") findFQV_emit_item(wi, wi->q.o, wi->q.s, result[0]);
-      else if (wi->q.a == "not") notin_emit_item(wi, wi->q.o, wi->q.s, result[0], result[1]);
-      else intersect_emit_item(wi, wi->q.o, wi->q.s, result[0], result[1]);
+      if (!wi->cancel.load()){
+        if (wi->q.a == "list") traverse_emit_item(wi, wi->q.o, wi->q.s, result[0]);
+        else if (wi->q.a == "fqv") findFQV_emit_item(wi, wi->q.o, wi->q.s, result[0]);
+        else if (wi->q.a == "not") notin_emit_item(wi, wi->q.o, wi->q.s, result[0], result[1]);
+        else intersect_emit_item(wi, wi->q.o, wi->q.s, result[0], result[1]);
+      }
     }
     {
       time_t now = time(NULL); job_result_printf(wi, "DBAGE %.f", difftime(now, treetime));
@@ -406,9 +449,30 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void
         return -1;
       }
 
+      // Only accept compute on root path
+      if (uri[0] != 0 && strcmp(uri, "/") != 0) {
+        const char *body = "Bad request. Use /?c1=...&... or /status.\n";
+        uint8_t buf[LWS_PRE + 512]; uint8_t *p = &buf[LWS_PRE], *end = &buf[sizeof(buf) - 1];
+        if (lws_add_http_common_headers(wsi, 400, "text/plain; charset=utf-8", (lws_filepos_t)strlen(body), &p, end)) return 1;
+        if (lws_finalize_write_http_header(wsi, &buf[LWS_PRE], &p, end)) return 1;
+        lws_write(wsi, (unsigned char*)body, (unsigned int)strlen(body), LWS_WRITE_HTTP);
+        return -1;
+      }
+
       // compute request: stream text or JS
       Query q = parse_query(wsi);
       bool use_js = false; { std::string t = get_arg(wsi, "t"); use_js = (t == "js"); }
+
+      // must have c1
+      if (q.c1 < 0) {
+        const char *body = "Missing required parameter c1.\n";
+        uint8_t buf[LWS_PRE + 512]; uint8_t *p = &buf[LWS_PRE], *end = &buf[sizeof(buf) - 1];
+        if (lws_add_http_common_headers(wsi, 400, "text/plain; charset=utf-8", (lws_filepos_t)strlen(body), &p, end)) return 1;
+        if (lws_finalize_write_http_header(wsi, &buf[LWS_PRE], &p, end)) return 1;
+        lws_write(wsi, (unsigned char*)body, (unsigned int)strlen(body), LWS_WRITE_HTTP);
+        return -1;
+      }
+      // initialize per-conn state (allocate under gq_mtx to synchronize with worker)
       pss->wsi = wsi; pss->js = use_js; pss->closed = false; pss->js_header_sent = false;
       const char *ctype = use_js ? "application/javascript; charset=utf-8" : "text/plain; charset=utf-8";
       uint8_t buf[LWS_PRE + 512]; uint8_t *p = &buf[LWS_PRE], *end = &buf[sizeof(buf) - 1];
@@ -418,40 +482,71 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void
       // enqueue work
       auto *wi = new WorkItem; wi->q = q; wi->ct = use_js ? CT_HTTP_JS : CT_HTTP; wi->ph = pss; pss->wi = wi;
       {
-        std::lock_guard<std::mutex> lk(gq_mtx); gqueue.push_back(wi);
+        std::lock_guard<std::mutex> lk(gq_mtx);
+        // allocate HTTP queues while holding the same mutex used by worker
+        pss->q = new std::deque<std::string>();
+        pss->qmtx = new std::mutex();
+        // show position in queue to HTTP client, like WS does
+        int pos = (int)gqueue.size() + (g_current ? 1 : 0);
+        {
+          std::lock_guard<std::mutex> ql(*(pss->qmtx));
+          pss->q->push_back(std::string("QUEUED ") + std::to_string(pos) + "\n");
+        }
+        gqueue.push_back(wi);
       }
       gq_cv.notify_one();
       // for JS, send opening callback
-      if (use_js){ std::lock_guard<std::mutex> lk(pss->qmtx); pss->q.push_back("fastcciCallback( [\n"); pss->js_header_sent = true; }
+      if (use_js){ std::lock_guard<std::mutex> lk(*(pss->qmtx)); pss->q->push_back("fastcciCallback( [\n"); pss->js_header_sent = true; }
       lws_callback_on_writable(wsi);
       return 0; }
     case LWS_CALLBACK_HTTP_WRITEABLE: {
-      // drain queued lines
-      for(;;){
-        std::string line; {
-          std::lock_guard<std::mutex> lk(pss->qmtx); if (pss->q.empty()) break; line = std::move(pss->q.front()); pss->q.pop_front(); }
-        if (pss->js){
-          // for JS, if line is DONE -> close array+cb and finish
-          if (line.rfind("DONE", 0) == 0){
-            std::string closing = " 'DONE'] );\n";
-            int n = lws_write(wsi, (unsigned char*)closing.data(), (unsigned int)closing.size(), LWS_WRITE_HTTP);
-            if (n < 0) return -1; lws_write(wsi, (unsigned char*)"", 0, LWS_WRITE_HTTP_FINAL); return -1;
-          }
-          // else wrap as 'line',
-          // strip trailing \n
-          if (!line.empty() && line.back()=='\n') line.pop_back();
-          std::string wrapped = " '" + line + "',";
-          int n = lws_write(wsi, (unsigned char*)wrapped.data(), (unsigned int)wrapped.size(), LWS_WRITE_HTTP);
-          if (n < 0) return -1;
-        } else {
-          int n = lws_write(wsi, (unsigned char*)line.data(), (unsigned int)line.size(), LWS_WRITE_HTTP);
-          if (n < 0) return -1;
-          if (line.rfind("DONE", 0) == 0){ lws_write(wsi, (unsigned char*)"", 0, LWS_WRITE_HTTP_FINAL); return -1; }
-        }
+      // continue any partial write first
+      if (pss->pend && pss->pend_off < pss->pend_len){
+        size_t left = pss->pend_len - pss->pend_off;
+        int n = lws_write(wsi, (unsigned char*)pss->pend + pss->pend_off, (unsigned int)left, LWS_WRITE_HTTP);
+        if (n < 0) return -1;
+        pss->pend_off += (size_t)n;
+        if (pss->pend_off < pss->pend_len){ if (pss->wsi) lws_callback_on_writable(wsi); return 0; }
+        free(pss->pend); pss->pend = nullptr; pss->pend_len = pss->pend_off = 0;
+        if (pss->pend_after_final){ lws_write(wsi, (unsigned char*)"", 0, LWS_WRITE_HTTP_FINAL); return -1; }
       }
+
+      // fetch next line
+      std::string line;
+      {
+        if (!pss->q || !pss->qmtx){ if (pss->wsi) lws_callback_on_writable(wsi); return 0; }
+        std::lock_guard<std::mutex> lk(*(pss->qmtx));
+        if (!pss->q->empty()){ line = std::move(pss->q->front()); pss->q->pop_front(); }
+      }
+      if (!line.empty()){
+        bool is_done = (line.rfind("DONE", 0) == 0);
+        std::string out;
+        if (pss->js){
+          if (is_done) out = " 'DONE'] );\n";
+          else { if (!line.empty() && line.back()=='\n') line.pop_back(); out = " '" + line + "',"; }
+        } else {
+          out = line;
+        }
+        pss->pend_len = out.size(); pss->pend_off = 0; pss->pend_after_final = is_done;
+        pss->pend = (char*)malloc(pss->pend_len);
+        memcpy(pss->pend, out.data(), pss->pend_len);
+        if (pss->wsi) lws_callback_on_writable(wsi);
+        return 0;
+      }
+      if (pss->wsi) lws_callback_on_writable(wsi);
       return 0; }
     case LWS_CALLBACK_CLOSED_HTTP:
-      pss->closed = true; pss->wsi = nullptr; if (pss->wi) pss->wi->ph = nullptr; return 0;
+      pss->closed = true; pss->wsi = nullptr;
+      if (pss->pend){ free(pss->pend); pss->pend = nullptr; pss->pend_len = pss->pend_off = 0; pss->pend_after_final = false; }
+      if (pss->wi){
+        WorkItem *wi = pss->wi; wi->ph = nullptr; wi->cancel.store(true);
+        // remove from queue if still pending
+        std::lock_guard<std::mutex> lk(gq_mtx);
+        if (g_current != wi){
+          for (auto it = gqueue.begin(); it != gqueue.end(); ++it){ if (*it == wi){ gqueue.erase(it); break; } }
+        }
+      }
+      return 0;
     default: return 0;
   }
 }
@@ -483,7 +578,16 @@ static int callback_ws(struct lws *wsi, enum lws_callback_reasons reason, void *
       lws_ring_consume(pss->ring, &pss->tail, NULL, 1); lws_ring_update_oldest_tail(pss->ring, pss->tail);
       if (is_done) return -1; if (lws_ring_get_element(pss->ring, &pss->tail)) lws_callback_on_writable(wsi); return 0; }
     case LWS_CALLBACK_CLOSED:
-      pss->closed = true; pss->wsi = nullptr; if (pss->ring) { lws_ring_destroy(pss->ring); pss->ring = nullptr; } if (pss->wi) pss->wi->pw = nullptr; return 0;
+      pss->closed = true; pss->wsi = nullptr;
+      if (pss->ring) { lws_ring_destroy(pss->ring); pss->ring = nullptr; }
+      if (pss->wi){
+        WorkItem *wi = pss->wi; wi->pw = nullptr; wi->cancel.store(true);
+        std::lock_guard<std::mutex> lk(gq_mtx);
+        if (g_current != wi){
+          for (auto it = gqueue.begin(); it != gqueue.end(); ++it){ if (*it == wi){ gqueue.erase(it); break; } }
+        }
+      }
+      return 0;
     default: return 0;
   }
 }
@@ -501,7 +605,7 @@ int main(int argc, char **argv) {
   // precompute goodImages
   int goodCats[][3] = {{3943817,0,1},{5799448,1,1},{91039287,0,2},{3618826,0,3},{4143367,0,4}};
   goodImages->clear(); goodImages->addTags(); result_type r;
-  for (int i = 5; i > 0; --i){ result[0]->clear(); result[0]->num = 0; fetchFiles(goodCats[i-1][0], goodCats[i-1][1], result[0]); for (int j = 0; j < result[0]->num; j++){ r = result[0]->buf[j] & cat_mask; if (r < maxcat){ goodImages->mask[r] = result[0]->mask[r]; goodImages->tags[r] = goodCats[i-1][2]; } } }
+  for (int i = 5; i > 0; --i){ result[0]->clear(); result[0]->num = 0; fetchFiles(goodCats[i-1][0], goodCats[i-1][1], result[0], nullptr); for (int j = 0; j < result[0]->num; j++){ r = result[0]->buf[j] & cat_mask; if (r < maxcat){ goodImages->mask[r] = result[0]->mask[r]; goodImages->tags[r] = goodCats[i-1][2]; } } }
   goodImages->num = -1;
 
   // Start compute worker and notifier
@@ -519,13 +623,24 @@ int main(int argc, char **argv) {
       // send WAITING for queued WS items
       for (size_t i = 0; i < snapshot.size(); ++i){ WorkItem *wi = snapshot[i]; if (wi && wi->ct == CT_WS && wi->pw){ char msgbuf[64]; snprintf(msgbuf, sizeof(msgbuf), "WAITING %zu\n", snapshot.size() - i); emit_to_ws(wi->pw, std::string(msgbuf)); } }
       // send WORKING for current
-      if (cur && cur->ct == CT_WS && cur->pw){ if (cur->status == JS_PREPROCESS || cur->status == JS_COMPUTING){ char msgbuf[64]; snprintf(msgbuf, sizeof(msgbuf), "WORKING %d %d\n", result[0]->num, result[1]->num); emit_to_ws(cur->pw, std::string(msgbuf)); } }
+      if (cur){
+        if (cur->status == JS_PREPROCESS || cur->status == JS_COMPUTING){
+          char msgbuf[64]; snprintf(msgbuf, sizeof(msgbuf), "WORKING %d %d\n", result[0]->num, result[1]->num);
+          if (cur->ct == CT_WS && cur->pw) emit_to_ws(cur->pw, std::string(msgbuf));
+          if ((cur->ct == CT_HTTP || cur->ct == CT_HTTP_JS) && cur->ph && !cur->ph->closed && cur->ph->q && cur->ph->qmtx){
+            std::lock_guard<std::mutex> ql(*(cur->ph->qmtx)); cur->ph->q->push_back(std::string(msgbuf));
+            if (cur->ph->wsi) lws_callback_on_writable(cur->ph->wsi);
+          }
+        }
+      }
     }
     return nullptr; }, nullptr)) return 1;
 
   // LWS context
   lws_set_log_level(LLL_USER | LLL_NOTICE, nullptr);
   struct lws_context_creation_info info; memset(&info, 0, sizeof(info)); info.port = atoi(argv[1]);
+  // Allow long-running streaming transactions (seconds)
+  info.timeout_secs = 3600; // 1 hour to match long traversals
   static const struct lws_protocols protocols[] = {
     { "http", callback_http, sizeof(pss_http), 0 },
     { "fastcci-ws", callback_ws, sizeof(pss_ws), 0 },
